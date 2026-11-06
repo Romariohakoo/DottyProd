@@ -95,6 +95,28 @@ def test_login_sets_httponly_cookies_and_hides_tokens(client):
     assert "Path=/api/auth" in refresh
 
 
+def test_login_cookies_with_samesite_none(client, monkeypatch):
+    """Фронт на localhost → задеплоенный backend: нужен SameSite=None; Secure."""
+    from src.core.config import settings
+
+    monkeypatch.setattr(settings, "cookie_samesite", "none")
+    monkeypatch.setattr(settings, "cookie_secure", True)
+    assert _register(client).status_code == 201
+
+    response = _login(client)
+
+    assert response.status_code == 200
+    auth_cookies = [
+        c for c in _set_cookie_headers(response)
+        if c.startswith(("access_token=", "refresh_token="))
+    ]
+    assert len(auth_cookies) == 2
+    for cookie in auth_cookies:
+        assert "SameSite=none" in cookie
+        assert "Secure" in cookie
+        assert "HttpOnly" in cookie
+
+
 def test_login_wrong_password(client):
     assert _register(client).status_code == 201
     response = _login(client, password="wrong")

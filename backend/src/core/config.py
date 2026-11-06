@@ -1,3 +1,6 @@
+from typing import Literal
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,8 +23,19 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     cookie_secure: bool = False
-    cookie_samesite: str = "lax"
+    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     cookie_domain: str | None = None
+
+    @field_validator("cookie_samesite", mode="before")
+    @classmethod
+    def _lowercase_samesite(cls, value):
+        return value.lower() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _samesite_none_requires_secure(self):
+        if self.cookie_samesite == "none":
+            self.cookie_secure = True
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:
