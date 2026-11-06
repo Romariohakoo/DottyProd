@@ -17,6 +17,7 @@ variables:
 
 test_backend:
   stage: test
+  extends: .rules-merge-to-main
   image: python:3.14-slim
   variables:
     PIP_CACHE_DIR: $CI_PROJECT_DIR/.pip-cache
@@ -41,6 +42,7 @@ test_backend:
 
 build_frontend:
   stage: build
+  extends: .rules-merge-to-main
   image: registry.spirit.t-education.com/cicd-images/base-kaniko:latest
   variables:
     DOCKER_CONFIG: /kaniko/.docker
@@ -93,6 +95,7 @@ build_frontend:
 
 build_backend:
   stage: build
+  extends: .rules-merge-to-main
   image: registry.spirit.t-education.com/cicd-images/base-kaniko:latest
   variables:
     DOCKER_CONFIG: /kaniko/.docker
@@ -158,16 +161,16 @@ build_backend:
     VM: "$DEPLOY_SSH_USER@$DEPLOY_VM"
     DP_CLI_VERSION: "14.1.0"
 
-.rules-merge-to-master:
+.rules-merge-to-main:
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
 
 
 deploy:
   stage: deploy
   extends:
     - .ssh_vm
-    - .rules-merge-to-master
+    - .rules-merge-to-main
   needs:
     - job: build_frontend
       artifacts: true
