@@ -188,6 +188,7 @@ deploy:
     - $SSH $VM "if [ -d ~/app/Caddyfile ]; then sudo rm -rf ~/app/Caddyfile; fi"
     - $SCP deploy/docker-compose.yaml deploy/nginx.conf deploy/Caddyfile $SPIRIT_DOCKER_SA_KEY $VM:app/
     - $SCP "$BACKEND_ENV" "$VM:app/.env"
+    - $SSH $VM "printf '\nFRONTEND_IMAGE_NAME=%s\nBACKEND_IMAGE_NAME=%s\n' '$FRONTEND_IMAGE_NAME' '$BACKEND_IMAGE_NAME' >> ~/app/.env"
     - $SSH $VM "sudo rm -rf ~/app/monitoring"
     - $SCP -r deploy/monitoring $VM:app/
     - $SSH $VM "cd ~/app && if [ -d grafana.env ]; then sudo rm -rf grafana.env; fi && [ -f grafana.env ] || (umask 077 && echo GF_SECURITY_ADMIN_PASSWORD=\$(openssl rand -hex 12) > grafana.env)"
@@ -198,20 +199,23 @@ deploy:
       $SSH $VM "cd ~/app &&
         sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
         sudo dp auth configure-docker &&
-        sudo \
+        sudo env \
           FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
           BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
           docker compose down &&
-        sudo \
+        sudo env \
           FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
           BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
           docker compose pull &&
-        sudo \
+        sudo env \
           FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
           BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
           docker compose up -d &&
-        sudo \
+        sudo env \
           FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
           BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
           docker compose up -d --no-deps --force-recreate grafana prometheus alloy &&
-        sudo docker compose exec -T nginx nginx -s reload"
+        sudo env \
+          FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
+          BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
+          docker compose exec -T nginx nginx -s reload"
