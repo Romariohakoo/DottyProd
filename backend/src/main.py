@@ -9,7 +9,7 @@ from src.routers import api_router
 
 def create_app():
     setup_logging()
-    app = FastAPI(title="ProdTemplate")
+    app = FastAPI(title="ProdTemplate", docs_url="/api/docs")
     register_exception_handlers(app)
     setup_observability(app)
     app.include_router(api_router)

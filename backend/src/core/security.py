@@ -2,7 +2,9 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import jwt
+from fastapi import HTTPException
 from pwdlib import PasswordHash
+from starlette import status
 
 from src.core.config import settings
 
@@ -10,8 +12,8 @@ password_hash = PasswordHash.recommended()
 
 
 def hash_password(password: str) -> str:
-    assert len(password) >= 8, "password too short"
-    assert len(password.encode("utf-8")) <= 72, "password too long (bytes)"
+    if len(password) < 6 or len(password) > 32:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Password must be at least 6 characters and less than 32.")
     return password_hash.hash(password)
 
 
