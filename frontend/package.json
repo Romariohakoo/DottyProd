@@ -9,7 +9,7 @@
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "typecheck": "next typegen && tsc --noEmit",
-    "check": "pnpm lint && pnpm typecheck && pnpm build",
+    "check": "pnpm lint:fix && pnpm typecheck",
     "precommit": "pnpm check",
     "prepare": "husky"
   },

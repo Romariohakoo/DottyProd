@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: dotty
+    folder: Dotty
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards

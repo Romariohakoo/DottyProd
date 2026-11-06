@@ -1,0 +1,59 @@
+groups:
+  - name: dotty-backend
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend недоступен"
+          description: "Prometheus больше минуты не может получить метрики backend."
+
+      - alert: High5xxRate
+        expr: |
+          sum(rate(http_requests_total{job="backend",status="5xx"}[5m]))
+            / clamp_min(sum(rate(http_requests_total{job="backend"}[5m])), 0.001) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Больше 5% ответов backend — 5xx"
+          description: "Смотри панель «Ошибки backend» на дашборде, там трейсбеки с request_id."
+
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="backend"}[5m]))) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 латентности backend выше 1 секунды"
+
+  - name: dotty-host
+    rules:
+      - alert: HostHighCPU
+        expr: 100 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU сервера выше 85%"
+
+      - alert: HostHighMemory
+        expr: 1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Занято больше 90% памяти сервера"
+
+      - alert: HostLowDisk
+        expr: |
+          node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"}
+            / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "На диске сервера осталось меньше 10%"

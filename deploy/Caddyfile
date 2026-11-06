@@ -1,0 +1,11 @@
+# Сертификат хранится в volume caddy_data и переживает передеплой —
+# не перевыпускаем его каждый раз (у Let's Encrypt лимиты на домен).
+hack-kzn-11-vm1-5798eb.vm.prodcontest.com {
+	encode zstd gzip
+	reverse_proxy nginx:80
+}
+
+# Заход по голому IP / http — на HTTPS-домен
+http:// {
+	redir https://hack-kzn-11-vm1-5798eb.vm.prodcontest.com{uri} permanent
+}
