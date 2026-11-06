@@ -15,11 +15,17 @@ def test_request_id_is_returned(client):
     assert response.headers["X-Request-ID"] == "test-request-id"
 
 
-def test_regular_request_is_not_broken_by_middleware(client):
-    response = client.get("/openapi.json")
+def test_swagger_uses_api_openapi_schema(client):
+    response = client.get("/api/openapi.json")
 
     assert response.status_code == 200
     assert "X-Request-ID" in response.headers
+
+    docs_response = client.get("/api/docs")
+    assert docs_response.status_code == 200
+    assert "/api/openapi.json" in docs_response.text
+
+    assert client.get("/openapi.json").status_code == 404
 
 
 def test_route_template_keeps_router_prefix():
