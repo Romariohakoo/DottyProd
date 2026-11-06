@@ -22,7 +22,12 @@ def _register(client, username, email):
         json={"username": username, "email": email, "password": "secret123"},
     )
     assert response.status_code == 201
-    token = client.post(LOGIN_URL, json={"email": email, "password": "secret123"}).json()["access_token"]
+    login = client.post(LOGIN_URL, json={"email": email, "password": "secret123"})
+    assert login.status_code == 200
+    token = login.cookies["access_token"]
+    # Логин кладёт куку в общий jar клиента, а кука важнее Bearer.
+    # Чистим, чтобы запросы шли от пользователя из заголовка, а не от последнего залогиненного.
+    client.cookies.clear()
     return response.json()["id"], {"Authorization": f"Bearer {token}"}
 
 

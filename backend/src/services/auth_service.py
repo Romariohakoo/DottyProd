@@ -15,7 +15,7 @@ from src.models.auth_session_model import AuthSessionModel
 from src.models.user_model import UserModel
 from src.repositories.auth_session_repository import AuthSessionRepository
 from src.repositories.user_repository import UserRepository
-from src.schemas.auth import RefreshTokenRequest, TokenResponse, UserLogin, UserRegister
+from src.schemas.auth import TokenResponse, UserLogin, UserRegister
 
 
 class AuthService:
@@ -40,27 +40,17 @@ class AuthService:
             hashed_password=hash_password(data.password),
         )
 
-    async def login(self, data: UserLogin) -> TokenResponse:
+    async def login(self, data: UserLogin) -> tuple[UserModel, TokenResponse]:
         user = await self.users.get_by_email(data.email)
         if user is None or not verify_password(data.password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
             )
-        return await self._create_session_tokens(user.id)
+        return user, await self._create_session_tokens(user.id)
 
-    async def refresh(self, data: RefreshTokenRequest) -> TokenResponse:
-        try:
-            payload = decode_access_token(data.refresh_token)
-            if payload.get("type") != "refresh":
-                raise ValueError
-            user_id = int(payload["sub"])
-            session_id = payload["sid"]
-            refresh_token_jti = payload["jti"]
-            if not isinstance(session_id, str) or not isinstance(refresh_token_jti, str):
-                raise ValueError
-        except (jwt.PyJWTError, TypeError, ValueError, KeyError):
-            raise _credentials_exception()
+    async def refresh(self, refresh_token: str | None) -> TokenResponse:
+        user_id, session_id, refresh_token_jti = _decode_refresh_token(refresh_token)
 
         if await self.users.get_by_id(user_id) is None:
             raise _credentials_exception()
@@ -84,6 +74,15 @@ class AuthService:
     async def logout(self, auth_session: AuthSessionModel) -> None:
         await self.auth_sessions.revoke(auth_session.id)
 
+    async def logout_by_refresh_token(self, refresh_token: str | None):
+        try:
+            user_id, session_id, _ = _decode_refresh_token(refresh_token)
+        except HTTPException:
+            return
+        auth_session = await self.auth_sessions.get_active_by_id(session_id)
+        if auth_session is not None and auth_session.user_id == user_id:
+            await self.auth_sessions.revoke(session_id)
+
     async def _create_session_tokens(self, user_id: int) -> TokenResponse:
         session_id = str(uuid4())
         tokens = self._create_token_pair(user_id, session_id)
@@ -102,6 +101,23 @@ class AuthService:
             access_token=create_access_token(str(user_id), session_id),
             refresh_token=create_refresh_token(str(user_id), session_id),
         )
+
+
+def _decode_refresh_token(refresh_token: str | None) -> tuple[int, str, str]:
+    if not refresh_token:
+        raise _credentials_exception()
+    try:
+        payload = decode_access_token(refresh_token)
+        if payload.get("type") != "refresh":
+            raise ValueError
+        user_id = int(payload["sub"])
+        session_id = payload["sid"]
+        refresh_token_jti = payload["jti"]
+        if not isinstance(session_id, str) or not isinstance(refresh_token_jti, str):
+            raise ValueError
+    except (jwt.PyJWTError, TypeError, ValueError, KeyError):
+        raise _credentials_exception()
+    return user_id, session_id, refresh_token_jti
 
 
 def _credentials_exception() -> HTTPException:

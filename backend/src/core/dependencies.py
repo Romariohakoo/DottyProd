@@ -1,9 +1,10 @@
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from src.core.cookies import ACCESS_COOKIE
 from src.core.security import decode_access_token
 from src.db.dependencies import SessionDep
 from src.models.auth_session_model import AuthSessionModel
@@ -11,15 +12,26 @@ from src.models.user_model import UserModel
 from src.repositories.auth_session_repository import AuthSessionRepository
 from src.repositories.user_repository import UserRepository
 
-bearer_scheme = HTTPBearer()
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def get_access_token(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+                     access_cookie: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None):
+    if access_cookie:
+        return access_cookie
+    if credentials is not None:
+        return credentials.credentials
+    return None
 
 
 async def get_current_auth_session(
     session: SessionDep,
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+    token: Annotated[str | None, Depends(get_access_token)],
 ) -> AuthSessionModel:
+    if not token:
+        raise _credentials_exception()
     try:
-        payload = decode_access_token(credentials.credentials)
+        payload = decode_access_token(token)
         if payload.get("type") != "access":
             raise ValueError
         subject = payload.get("sub")
