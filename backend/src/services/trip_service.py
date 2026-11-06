@@ -1,9 +1,7 @@
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID, uuid4
-from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageOps
 from sqlalchemy.exc import IntegrityError
@@ -18,7 +16,6 @@ from src.core.domain import (
     NotFoundError,
     PlaceInUse,
     UnsupportedFile,
-    require_timezone,
 )
 from src.models.trip_model import AttachmentModel, EventModel, PlaceModel, TripModel
 from src.models.user_model import UserModel
@@ -75,25 +72,17 @@ class TripService:
         rows = await self.trips.list_for_user(user.id)
         return [self._card(trip, role) for trip, role in rows]
 
-    async def get_trip(self, access: TripAccess, day: date | None = None) -> TripDetail:
+    async def get_trip(self, access: TripAccess) -> TripDetail:
         places = await self.trips.list_places(access.trip.id)
-        starts = await self.trips.list_event_starts(access.trip.id)
-        window = self._day_window(access.trip, day)
-        events = await self.trips.list_events(
-            access.trip.id,
-            start=None if window is None else window[0],
-            end=None if window is None else window[1],
-        )
+        events = await self.trips.list_events(access.trip.id)
         return TripDetail(
             trip=self._trip_dto(access.trip),
             role=self._role(access.role),
             places=[self._place_dto(place) for place in places],
-            timeline=[self._event_dto(access.trip, event) for event in events],
-            days=self._days(access.trip, starts),
+            timeline=[self._event_dto(event) for event in events],
         )
 
     async def create_trip(self, user: UserModel, data: TripInput) -> TripDTO:
-        require_timezone(data.timezone)
         if data.client_request_id is not None:
             existing = await self.trips.get_trip_by_request(user.id, data.client_request_id)
             if existing is not None:
@@ -106,7 +95,6 @@ class TripService:
 
     async def update_trip(self, access: TripAccess, data: TripInput) -> TripDTO:
         self._require_owner(access)
-        require_timezone(data.timezone)
         await self.trips.lock_trip(access.trip.id)
         self.trips.apply_trip(access.trip, data)
         await self._commit()
@@ -158,7 +146,7 @@ class TripService:
         if data.client_request_id is not None:
             existing = await self.trips.get_event_by_request(access.trip.id, data.client_request_id)
             if existing is not None:
-                return self._event_dto(access.trip, existing)
+                return self._event_dto(existing)
         event = EventModel(
             trip_id=access.trip.id,
             created_by=user.id,
@@ -341,34 +329,27 @@ class TripService:
             event.from_place_id = None
             event.to_place_id = None
             event.transport_type = None
-            event.departure_timezone = None
-            event.arrival_timezone = None
             return
         if isinstance(data, MovementInput):
-            require_timezone(data.departure_timezone)
-            require_timezone(data.arrival_timezone)
             event.category = None
             event.place_id = None
             event.from_place_id = (await self._resolve_place(trip_id, data.from_place)).id
             event.to_place_id = (await self._resolve_place(trip_id, data.to_place)).id
             event.transport_type = data.transport_type
-            event.departure_timezone = data.departure_timezone
-            event.arrival_timezone = data.arrival_timezone
 
     async def _event_response(self, trip: TripModel, event_id: int) -> EventDTO:
         event = await self.trips.get_event(trip.id, event_id)
         if event is None:
             raise NotFoundError(EVENT_NOT_FOUND)
-        return self._event_dto(trip, event)
+        return self._event_dto(event)
 
-    def _event_dto(self, trip: TripModel, event: EventModel) -> EventDTO:
+    def _event_dto(self, event: EventModel) -> EventDTO:
         base = dict(
             id=event.id,
             title=event.title,
             description=event.description,
             start_at=event.start_at,
             end_at=event.end_at,
-            local_date=self._local_date(trip, event.start_at),
             booking_url=event.booking_url,
             created_by=event.created_by,
             attachments=[self._attachment_dto(item) for item in event.attachments],
@@ -385,8 +366,6 @@ class TripService:
             transport_type=event.transport_type or "other",
             from_place=self._place_dto(event.from_place),
             to_place=self._place_dto(event.to_place),
-            departure_timezone=event.departure_timezone or trip.timezone,
-            arrival_timezone=event.arrival_timezone or trip.timezone,
             **base,
         )
 
@@ -431,7 +410,6 @@ class TripService:
             country=trip.country,
             start_date=trip.start_date,
             end_date=trip.end_date,
-            timezone=trip.timezone,
             description=trip.description,
             cover_url=trip.cover_url,
             created_at=trip.created_at,
@@ -462,20 +440,6 @@ class TripService:
         if role in {"owner", "editor", "viewer"}:
             return role
         raise ForbiddenError(INSUFFICIENT_ROLE)
-
-    def _local_date(self, trip: TripModel, moment: datetime) -> date:
-        return moment.astimezone(ZoneInfo(trip.timezone)).date()
-
-    def _days(self, trip: TripModel, starts: list[datetime]) -> list[date]:
-        return sorted({self._local_date(trip, moment) for moment in starts})
-
-    def _day_window(self, trip: TripModel, day: date | None) -> tuple[datetime, datetime] | None:
-        if day is None:
-            return None
-        zone = ZoneInfo(trip.timezone)
-        start = datetime.combine(day, time.min, tzinfo=zone)
-        end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone)
-        return start, end
 
     async def _commit(self) -> None:
         try:

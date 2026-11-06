@@ -1,4 +1,3 @@
-from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import case, delete, func, or_, select
@@ -118,22 +117,13 @@ class TripRepository:
     async def delete_place(self, place: PlaceModel) -> None:
         await self.session.delete(place)
 
-    async def list_event_starts(self, trip_id: int) -> list[datetime]:
-        stmt = select(EventModel.start_at).where(EventModel.trip_id == trip_id)
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def list_events(
-        self,
-        trip_id: int,
-        *,
-        start: datetime | None = None,
-        end: datetime | None = None,
-    ) -> list[EventModel]:
-        stmt = select(EventModel).where(EventModel.trip_id == trip_id).options(*_EVENT_LOADS)
-        if start is not None and end is not None:
-            stmt = stmt.where(EventModel.start_at >= start, EventModel.start_at < end)
-        stmt = stmt.order_by(EventModel.start_at.asc(), EventModel.id.asc())
+    async def list_events(self, trip_id: int) -> list[EventModel]:
+        stmt = (
+            select(EventModel)
+            .where(EventModel.trip_id == trip_id)
+            .options(*_EVENT_LOADS)
+            .order_by(EventModel.start_at.asc(), EventModel.id.asc())
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

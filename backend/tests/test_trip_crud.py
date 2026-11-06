@@ -10,7 +10,6 @@ def _trip_payload(**overrides):
         "country": "Россия",
         "start_date": "2026-06-10",
         "end_date": "2026-06-13",
-        "timezone": "Europe/Moscow",
         "description": "Казань",
         "cover_url": None,
     }
@@ -53,8 +52,6 @@ def _movement_payload(from_place, to_place, **overrides):
         "end_at": "2026-06-10T11:30:00+03:00",
         "booking_url": None,
         "transport_type": "walk",
-        "departure_timezone": "Europe/Moscow",
-        "arrival_timezone": "Europe/Moscow",
         "from_place": from_place,
         "to_place": to_place,
     }
@@ -100,7 +97,7 @@ def test_create_trip_returns_owner_and_is_readable(client):
     created = _create_trip(client, headers)
     trip_id = created["id"]
 
-    assert created["timezone"] == "Europe/Moscow"
+    assert "timezone" not in created
     assert "role" not in created
 
     listed = client.get(TRIPS_URL, headers=headers)
@@ -114,10 +111,10 @@ def test_create_trip_returns_owner_and_is_readable(client):
     assert loaded.json()["trip"]["id"] == trip_id
     assert loaded.json()["places"] == []
     assert loaded.json()["timeline"] == []
-    assert loaded.json()["days"] == []
+    assert "days" not in loaded.json()
 
 
-def test_create_trip_rejects_inverted_dates_and_unknown_timezone(client):
+def test_create_trip_rejects_inverted_dates(client):
     _, headers = _register(client, "anna", "anna@example.com")
 
     inverted = client.post(
@@ -127,14 +124,6 @@ def test_create_trip_rejects_inverted_dates_and_unknown_timezone(client):
     )
     assert inverted.status_code == 422
     assert inverted.json()["reason"] == "Validation failed"
-
-    timezone_error = client.post(
-        TRIPS_URL,
-        headers=headers,
-        json=_trip_payload(timezone="Not/AZone"),
-    )
-    assert timezone_error.status_code == 422
-    assert timezone_error.json()["reason"] == "Unknown timezone"
 
 
 def test_update_trip_is_owner_only(client, db_session):

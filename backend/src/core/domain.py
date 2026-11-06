@@ -1,6 +1,3 @@
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-
 class DomainError(Exception):
     def __init__(self, detail: str):
         self.detail = detail
@@ -33,12 +30,3 @@ class UnsupportedFile(DomainError):
 
 class FileTooLarge(DomainError):
     pass
-
-
-def require_timezone(name: str) -> str:
-    value = name.strip()
-    try:
-        ZoneInfo(value)
-    except (ZoneInfoNotFoundError, ValueError, KeyError):
-        raise InvalidDataError("Unknown timezone") from None
-    return value

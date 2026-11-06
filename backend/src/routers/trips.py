@@ -1,5 +1,3 @@
-from datetime import date
-
 from fastapi import APIRouter
 
 from src.core.dependencies import CurrentUser
@@ -22,13 +20,9 @@ async def create_trip(data: TripInput, user: CurrentUser, trips: TripServiceDep)
 
 
 @router.get("/{trip_id}")
-async def get_trip(
-    access: MemberTrip,
-    trips: TripServiceDep,
-    day: date | None = None,
-) -> TripDetail:
-    """Поездка, роль, места и таймлайн. day — один местный день. Чужая поездка — 404."""
-    return await trips.get_trip(access, day)
+async def get_trip(access: MemberTrip, trips: TripServiceDep) -> TripDetail:
+    """Поездка, роль, места и таймлайн. Чужая поездка — 404."""
+    return await trips.get_trip(access)
 
 
 @router.put("/{trip_id}")

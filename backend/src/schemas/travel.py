@@ -6,13 +6,10 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
-
-from src.core.domain import require_timezone
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 Url = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2048)]
-TimeZoneName = Annotated[str, StringConstraints(max_length=64)]
 
 Category = Literal[
     "excursion",
@@ -37,15 +34,9 @@ class TripInput(Strict):
     country: Title
     start_date: date
     end_date: date
-    timezone: TimeZoneName
     description: str | None = None
     cover_url: Url | None = None
     client_request_id: UUID | None = None
-
-    @field_validator("timezone")
-    @classmethod
-    def known_timezone(cls, value: str) -> str:
-        return require_timezone(value)
 
     @model_validator(mode="after")
     def dates_in_order(self) -> TripInput:
@@ -95,13 +86,6 @@ class MovementInput(EventBase):
     transport_type: TransportType
     from_place: PlaceChoice
     to_place: PlaceChoice
-    departure_timezone: TimeZoneName
-    arrival_timezone: TimeZoneName
-
-    @field_validator("departure_timezone", "arrival_timezone")
-    @classmethod
-    def known_timezone(cls, value: str) -> str:
-        return require_timezone(value)
 
 
 EventInput = Annotated[ActivityInput | MovementInput, Field(discriminator="type")]
@@ -113,7 +97,6 @@ class TripDTO(BaseModel):
     country: str
     start_date: date
     end_date: date
-    timezone: str
     description: str | None
     cover_url: str | None
     created_at: datetime
@@ -154,7 +137,6 @@ class EventBaseDTO(BaseModel):
     description: str | None
     start_at: datetime
     end_at: datetime | None
-    local_date: date
     booking_url: str | None
     created_by: int
     attachments: list[AttachmentDTO]
@@ -171,8 +153,6 @@ class MovementDTO(EventBaseDTO):
     transport_type: TransportType
     from_place: PlaceDTO
     to_place: PlaceDTO
-    departure_timezone: str
-    arrival_timezone: str
 
 
 EventDTO = Annotated[ActivityDTO | MovementDTO, Field(discriminator="type")]
@@ -183,7 +163,6 @@ class TripDetail(BaseModel):
     role: TripRole
     places: list[PlaceDTO]
     timeline: list[EventDTO]
-    days: list[date]
 
 
 @dataclass(frozen=True)

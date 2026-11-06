@@ -30,7 +30,6 @@ def _trip(owner_id, title, start: date, **overrides):
         country=overrides.pop("country", "Россия"),
         start_date=start,
         end_date=end,
-        timezone=overrides.pop("timezone", "Europe/Moscow"),
         description=overrides.pop("description", None),
         cover_url=overrides.pop("cover_url", None),
         **overrides,
@@ -188,8 +187,6 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
                 from_place_id=kremlin.id,
                 to_place_id=theater.id,
                 transport_type="walk",
-                departure_timezone="Europe/Moscow",
-                arrival_timezone="Europe/Moscow",
             )
             show = EventModel(
                 trip_id=trip.id,
@@ -214,8 +211,6 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
                 from_place_id=theater.id,
                 to_place_id=unnamed.id,
                 transport_type="car",
-                departure_timezone="Europe/Moscow",
-                arrival_timezone="Europe/Kaliningrad",
             )
             bare = EventModel(
                 trip_id=trip.id,
@@ -252,12 +247,12 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
     assert body["role"] == "viewer"
     assert body["trip"]["id"] == ids["trip_id"]
     assert body["trip"]["title"] == "Выходные в Казани"
-    assert body["trip"]["timezone"] == "Europe/Moscow"
+    assert "timezone" not in body["trip"]
     assert body["trip"]["description"] == "Казань"
     assert "role" not in body["trip"]
     assert "created_at" in body["trip"]
     assert "members" not in body
-    assert body["days"] == ["2026-06-10"]
+    assert "days" not in body
     assert [place["id"] for place in body["places"]] == [
         ids["kremlin_id"],
         ids["theater_id"],
@@ -273,7 +268,7 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
     ]
     walk = body["timeline"][0]
     assert walk["type"] == "activity"
-    assert walk["local_date"] == "2026-06-10"
+    assert "local_date" not in walk
     assert walk["category"] == "walk"
     assert walk["description"] == "взять воду"
     assert walk["place"] == {
@@ -289,6 +284,8 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
     assert transfer["from_place"]["id"] == ids["kremlin_id"]
     assert transfer["to_place"]["id"] == ids["theater_id"]
     assert transfer["transport_type"] == "walk"
+    assert "departure_timezone" not in transfer
+    assert "arrival_timezone" not in transfer
     gap = body["timeline"][3]
     assert gap["to_place"] == {
         "id": ids["unnamed_id"],
@@ -299,12 +296,3 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
     }
     bare = body["timeline"][4]
     assert bare["place"] is None
-
-    other_day = client.get(
-        f"{TRIPS_URL}/{ids['trip_id']}",
-        headers=boris_headers,
-        params={"day": "2026-06-11"},
-    )
-    assert other_day.status_code == 200
-    assert other_day.json()["timeline"] == []
-    assert other_day.json()["days"] == ["2026-06-10"]
