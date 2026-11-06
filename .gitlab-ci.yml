@@ -213,4 +213,5 @@ deploy:
         sudo \
           FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
           BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
-          docker compose up -d --no-deps --force-recreate grafana prometheus alloy"
+          docker compose up -d --no-deps --force-recreate grafana prometheus alloy &&
+        sudo docker compose exec -T nginx nginx -s reload"

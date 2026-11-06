@@ -17,10 +17,12 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 def get_access_token(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
                      access_cookie: Annotated[str | None, Cookie(alias=ACCESS_COOKIE)] = None):
-    if access_cookie:
-        return access_cookie
+    # Явный Authorization важнее куки: Swagger Authorize и curl не должны
+    # молча авторизоваться сессией браузера.
     if credentials is not None:
         return credentials.credentials
+    if access_cookie:
+        return access_cookie
     return None
 
 

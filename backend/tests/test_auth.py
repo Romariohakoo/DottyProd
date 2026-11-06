@@ -191,6 +191,19 @@ def test_me_with_bearer_header(client):
     assert response.status_code == 200
 
 
+def test_bearer_overrides_browser_cookie(client):
+    """Swagger Authorize должен побеждать куку, оставшуюся после входа на сайт."""
+    assert _register(client).status_code == 201
+    alice = _login_tokens(client)["access_token"]
+    assert _register(client, username="bob", email="bob@example.com").status_code == 201
+    assert _login(client, email="bob@example.com").status_code == 200
+
+    response = client.get(ME_URL, headers={"Authorization": f"Bearer {alice}"})
+
+    assert response.status_code == 200
+    assert response.json()["email"] == USER["email"]
+
+
 def test_me_without_token(client):
     response = client.get(ME_URL)
     assert response.status_code == 401
