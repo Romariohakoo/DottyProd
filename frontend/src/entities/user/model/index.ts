@@ -1,2 +1,2 @@
-export * from './user.types';
-export * from './get-user.query';
+export * from "./user.types";
+export * from "./get-user.query";

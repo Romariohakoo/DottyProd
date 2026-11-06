@@ -1,5 +1,5 @@
-import api from './client';
+import api from "./client";
 
-export * from './client';
+export * from "./client";
 export default api;
-export * from './global.types.d';
+export * from "./global.types.d";

@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 interface SubmitButtonProps {
   pending: boolean;
@@ -15,7 +15,7 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={pending}
-      className="mt-2 w-full cursor-pointer rounded-sm border border-ink bg-lime px-5 py-4 text-base font-bold tracking-[0.01em] text-forest shadow-hard transition-all enabled:hover:translate-x-1 enabled:hover:translate-y-1 enabled:hover:shadow-hard-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-forest disabled:cursor-not-allowed disabled:opacity-50"
+      className="mt-2 w-full cursor-pointer rounded-lg bg-accent px-5 py-3 text-base font-semibold text-foreground transition-colors enabled:hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
     >
       {pending ? pendingLabel : children}
     </button>

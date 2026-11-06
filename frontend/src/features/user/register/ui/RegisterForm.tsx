@@ -1,45 +1,41 @@
-'use client';
+"use client";
 
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { zodResolver } from "@hookform/resolvers/zod";
+import { isAxiosError } from "axios";
+import { useForm } from "react-hook-form";
 
-import {
-  FormError,
-  FormField,
-  SubmitButton,
-  TextLink,
-} from '@shared/ui';
+import { FormError, FormField, SubmitButton } from "@shared/ui";
 
-import { useRegisterMutation } from '../model/use-register-mutation';
-import {
-  type RegisterValues,
-  registerSchema,
-} from '../model/validation';
+import { useRegisterMutation } from "../model/use-register-mutation";
+import { type RegisterValues, registerSchema } from "../model/validation";
 
 const INITIAL_VALUES: RegisterValues = {
-  name: '',
-  login: '',
-  password: '',
+  username: "",
+  email: "",
+  password: "",
 };
 
 export function RegisterForm() {
-  const { mutate, isPending, error } =
-    useRegisterMutation();
+  const { mutate, isPending, error } = useRegisterMutation();
+  const conflictReason =
+    isAxiosError<{ reason?: string }>(error) && error.response?.status === 409
+      ? error.response.data.reason
+      : undefined;
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<RegisterValues>({
     defaultValues: INITIAL_VALUES,
-    mode: 'onTouched',
+    mode: "onTouched",
     resolver: zodResolver(registerSchema),
   });
 
   const onSubmit = (values: RegisterValues) => {
     mutate({
       ...values,
-      name: values.name.trim(),
-      login: values.login.trim(),
+      username: values.username.trim(),
+      email: values.email.trim(),
     });
   };
 
@@ -52,20 +48,20 @@ export function RegisterForm() {
       noValidate
     >
       <FormField
-        label="Имя"
-        type="text"
-        autoComplete="name"
-        placeholder="Введите имя"
-        error={errors.name?.message}
-        {...register('name')}
-      />
-      <FormField
-        label="Логин"
+        label="Имя пользователя"
         type="text"
         autoComplete="username"
-        placeholder="Введите логин"
-        error={errors.login?.message}
-        {...register('login')}
+        placeholder="Введите имя пользователя"
+        error={errors.username?.message}
+        {...register("username")}
+      />
+      <FormField
+        label="Email"
+        type="email"
+        autoComplete="email"
+        placeholder="name@example.com"
+        error={errors.email?.message}
+        {...register("email")}
       />
       <FormField
         label="Пароль"
@@ -73,27 +69,22 @@ export function RegisterForm() {
         autoComplete="new-password"
         placeholder="Введите пароль"
         error={errors.password?.message}
-        {...register('password')}
+        {...register("password")}
       />
 
       {error ? (
         <FormError>
-          Не удалось создать аккаунт. Проверьте данные и
-          попробуйте ещё раз.
+          {conflictReason === "Email already registered"
+            ? "Пользователь с данным email уже зарегистрирован"
+            : conflictReason === "Username already taken"
+              ? "Имя пользователя уже занято"
+              : "Не удалось создать аккаунт. Проверьте данные и попробуйте ещё раз."}
         </FormError>
       ) : null}
 
-      <SubmitButton
-        pending={isPending}
-        pendingLabel="Создаём аккаунт…"
-      >
+      <SubmitButton pending={isPending} pendingLabel="Создаём аккаунт…">
         Создать аккаунт
       </SubmitButton>
-
-      <p className="mt-2 text-sm text-ink/70">
-        Уже есть аккаунт?{' '}
-        <TextLink href="/login">Войти</TextLink>
-      </p>
     </form>
   );
 }

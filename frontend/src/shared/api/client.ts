@@ -1,43 +1,56 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError } from "axios";
 
-import { API_BASE_URL } from '../config/env';
-import {
-  convertKeys,
-  snakeToCamel,
-} from '../lib/case-converter';
+import { API_BASE_URL } from "../config/env";
+import { convertKeys, snakeToCamel } from "../lib/case-converter";
 
-export const UNKNOWN_ERROR = 'UNKNOWN_ERROR';
+export const UNKNOWN_ERROR = "UNKNOWN_ERROR";
+
+const ACCESS_TOKEN_KEY = "accessToken";
+
+export function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+export function setAccessToken(accessToken: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+}
+
+export function clearAccessToken(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+}
 
 export type UnauthorizedListener = () => void;
 
-let unauthorizedListener: UnauthorizedListener | null =
-  null;
+let unauthorizedListener: UnauthorizedListener | null = null;
 
-export function setOnUnauthorized(
-  listener: UnauthorizedListener,
-): void {
+export function setOnUnauthorized(listener: UnauthorizedListener): void {
   unauthorizedListener = listener;
 }
 
-const API_PREFIX = '/api';
+const API_PREFIX = "/api";
 
 let refreshPromise: Promise<boolean> | null = null;
 
 async function refreshAccessToken(): Promise<boolean> {
   refreshPromise ??= (async () => {
     try {
-      await axios.post(
+      const response = await axios.post<{ access_token: string }>(
         `${API_BASE_URL}${API_PREFIX}/auth/refresh`,
         undefined,
         {
           withCredentials: true,
           headers: {
-            'Content-Type': 'application/json',
+            "Content-Type": "application/json",
           },
         },
       );
+      setAccessToken(response.data.access_token);
       return true;
     } catch {
+      clearAccessToken();
       return false;
     } finally {
       refreshPromise = null;
@@ -47,35 +60,41 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 export interface ErrorData {
-  code: string;
-  message: string;
-  path: string;
-  timestamp: string;
-  traceId: string;
+  detail?: Array<{
+    loc: Array<string | number>;
+    msg: string;
+    type: string;
+  }>;
+  message?: string;
 }
 
 const api = axios.create({
   baseURL: API_BASE_URL + API_PREFIX,
   withCredentials: true,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
+api.interceptors.request.use((config) => {
+  const accessToken = getAccessToken();
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  return config;
+});
+
 const AUTH_ENDPOINTS = [
-  '/auth/login',
-  '/auth/register',
-  '/auth/refresh',
-  '/auth/logout',
+  "/auth/login",
+  "/auth/register",
+  "/auth/refresh",
+  "/auth/logout",
 ];
 
 api.interceptors.response.use(
   (response) => {
     if (response.data) {
-      response.data = convertKeys(
-        response.data,
-        snakeToCamel,
-      );
+      response.data = convertKeys(response.data, snakeToCamel);
     }
     return response;
   },
@@ -87,9 +106,8 @@ api.interceptors.response.use(
           })
         | undefined;
 
-      const isAuthEndpoint = AUTH_ENDPOINTS.some(
-        (endpoint) =>
-          (config?.url ?? '').includes(endpoint),
+      const isAuthEndpoint = AUTH_ENDPOINTS.some((endpoint) =>
+        (config?.url ?? "").includes(endpoint),
       );
 
       if (
@@ -103,6 +121,7 @@ api.interceptors.response.use(
         if (refreshed) {
           return api.request(config);
         }
+        clearAccessToken();
         unauthorizedListener?.();
       }
 
@@ -111,10 +130,9 @@ api.interceptors.response.use(
           error.response.data,
           snakeToCamel,
         ) as ErrorData;
-        if ((error.response.data as ErrorData).message) {
-          error.message = (
-            error.response.data as ErrorData
-          ).message;
+        const message = (error.response.data as ErrorData).message;
+        if (message) {
+          error.message = message;
         }
       }
 

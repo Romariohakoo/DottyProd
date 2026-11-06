@@ -17,7 +17,6 @@ variables:
 
 test_backend:
   stage: test
-  extends: .rules-merge-to-main
   image: python:3.14-slim
   variables:
     PIP_CACHE_DIR: $CI_PROJECT_DIR/.pip-cache
@@ -42,7 +41,6 @@ test_backend:
 
 build_frontend:
   stage: build
-  extends: .rules-merge-to-main
   image: registry.spirit.t-education.com/cicd-images/base-kaniko:latest
   variables:
     DOCKER_CONFIG: /kaniko/.docker
@@ -95,7 +93,6 @@ build_frontend:
 
 build_backend:
   stage: build
-  extends: .rules-merge-to-main
   image: registry.spirit.t-education.com/cicd-images/base-kaniko:latest
   variables:
     DOCKER_CONFIG: /kaniko/.docker
@@ -160,13 +157,6 @@ build_backend:
     SCP: "scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=accept-new"
     VM: "$DEPLOY_SSH_USER@$DEPLOY_VM"
 
-# test + build: в MR в main и в пайплайне main
-.rules-merge-to-main:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "main"'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
-# deploy: только после мержа в main (MR не выкатывается на прод до ревью)
 .rules-deploy-main:
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'

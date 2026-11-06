@@ -1,13 +1,8 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 export const loginSchema = z.object({
-  login: z
-    .string()
-    .min(4, 'Логин должен содержать не менее 4 символов')
-    .max(20),
-  password: z
-    .string()
-    .min(8, 'Пароль должен содержать не менее 8 символов'),
+  email: z.string().trim().email("Введите корректный email"),
+  password: z.string().min(1, "Введите пароль"),
 });
 
 export type LoginValues = z.infer<typeof loginSchema>;

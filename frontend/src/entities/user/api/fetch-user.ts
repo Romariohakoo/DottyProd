@@ -1,9 +1,6 @@
-import api from '@shared/api';
+import api from "@shared/api";
 
-import { GetUserReqDto, GetUserResDto } from './user.dto';
-
-export const getUser = async (query: GetUserReqDto) =>
-  (await api.get<GetUserResDto>(`/users/${query.id}`)).data;
+import { GetUserResDto } from "./user.dto";
 
 export const getMe = async () =>
-  (await api.get<GetUserResDto>('/users/me')).data;
+  (await api.get<GetUserResDto>("/auth/me")).data;

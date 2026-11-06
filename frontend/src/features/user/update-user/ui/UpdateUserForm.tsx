@@ -1,37 +1,27 @@
-'use client';
+"use client";
 
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm } from "react-hook-form";
 
-import type { User } from '@entities/user';
-import {
-  FormError,
-  FormField,
-  SubmitButton,
-} from '@shared/ui';
+import type { User } from "@entities/user";
+import { FormError, FormField, SubmitButton } from "@shared/ui";
 
-import { useUpdateUserMutation } from '../model/use-update-user-mutation';
-import {
-  type UpdateUserValues,
-  updateUserSchema,
-} from '../model/validation';
+import { useUpdateUserMutation } from "../model/use-update-user-mutation";
+import { type UpdateUserValues, updateUserSchema } from "../model/validation";
 
 interface UpdateUserFormProps {
   user: User;
 }
 
-export function UpdateUserForm({
-  user,
-}: UpdateUserFormProps) {
-  const { mutate, isPending, isSuccess, error } =
-    useUpdateUserMutation();
+export function UpdateUserForm({ user }: UpdateUserFormProps) {
+  const { mutate, isPending, isSuccess, error } = useUpdateUserMutation();
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<UpdateUserValues>({
-    defaultValues: { name: user.name },
-    mode: 'onTouched',
+    defaultValues: { name: user.username },
+    mode: "onTouched",
     resolver: zodResolver(updateUserSchema),
   });
 
@@ -53,26 +43,22 @@ export function UpdateUserForm({
         autoComplete="name"
         placeholder="Введите имя"
         error={errors.name?.message}
-        {...register('name')}
+        {...register("name")}
       />
 
       {error ? (
         <FormError>
-          Не удалось сохранить изменения. Попробуйте ещё
-          раз.
+          Не удалось сохранить изменения. Попробуйте ещё раз.
         </FormError>
       ) : null}
 
       {isSuccess ? (
-        <p role="status" className="text-sm text-ink/70">
+        <p role="status" className="text-sm text-foreground/70">
           Изменения сохранены
         </p>
       ) : null}
 
-      <SubmitButton
-        pending={isPending}
-        pendingLabel="Сохраняем…"
-      >
+      <SubmitButton pending={isPending} pendingLabel="Сохраняем…">
         Сохранить
       </SubmitButton>
     </form>

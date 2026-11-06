@@ -1,13 +1,10 @@
-'use client';
+"use client";
 
-import {
-  useMutation,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { userQueryKeys } from '@entities/user';
+import { userQueryKeys } from "@entities/user";
 
-import { updateUser } from '../api/update-user';
+import { updateUser } from "../api/update-user";
 
 export function useUpdateUserMutation() {
   const queryClient = useQueryClient();

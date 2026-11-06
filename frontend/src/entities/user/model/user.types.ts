@@ -1,7 +1,5 @@
-import { Uid } from '@shared/api';
-
 export interface User {
-  id: Uid;
-  login: string;
-  name: string;
+  id: number;
+  username: string;
+  email: string;
 }

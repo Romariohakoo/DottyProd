@@ -6,7 +6,7 @@ export function FormError({ children }: FormErrorProps) {
   return (
     <p
       role="alert"
-      className="border-l-4 border-red-700 bg-red-50 px-4 py-3 text-sm leading-5 text-red-800"
+      className="rounded-lg border border-muted/60 bg-muted/15 px-4 py-3 text-sm leading-5 text-foreground"
     >
       {children}
     </p>

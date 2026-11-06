@@ -1,15 +1,12 @@
-'use client';
+"use client";
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from "next/navigation";
 
-import {
-  useMutation,
-  useQueryClient,
-} from '@tanstack/react-query';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { userQueryKeys } from '@entities/user';
+import { userQueryKeys } from "@entities/user";
 
-import { login } from '../api/login';
+import { login } from "../api/login";
 
 export function useLoginMutation() {
   const router = useRouter();
@@ -18,10 +15,10 @@ export function useLoginMutation() {
   return useMutation({
     mutationFn: login,
     onSuccess: () => {
-      router.replace('/');
       void queryClient.invalidateQueries({
         queryKey: userQueryKeys.me,
       });
+      router.replace("/");
     },
   });
 }

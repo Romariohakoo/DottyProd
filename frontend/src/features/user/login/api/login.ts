@@ -1,8 +1,9 @@
-import type { UserAndTokenDto } from '@entities/user';
-import api from '@shared/api';
+import api, { setAccessToken } from "@shared/api";
 
-import type { LoginDto } from './login.dto';
+import type { LoginDto, LoginResDto } from "./login.dto";
 
-export const login = async (data: LoginDto) =>
-  (await api.post<UserAndTokenDto>('/auth/login', data))
-    .data;
+export const login = async (data: LoginDto) => {
+  const response = (await api.post<LoginResDto>("/auth/login", data)).data;
+  setAccessToken(response.accessToken);
+  return response;
+};

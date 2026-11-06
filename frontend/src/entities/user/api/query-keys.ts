@@ -1,4 +1,4 @@
 export const userQueryKeys = {
-  base: ['users'],
-  me: ['users', 'me'],
+  base: ["users"],
+  me: ["users", "me"],
 };
