@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     cookie_domain: str | None = None
 
+    upload_dir: str = "/data/uploads"
+    upload_max_bytes: int = 10_485_760
+    upload_max_pixels: int = 40_000_000
+    upload_max_per_event: int = 20
+
     @field_validator("cookie_samesite", mode="before")
     @classmethod
     def _lowercase_samesite(cls, value):

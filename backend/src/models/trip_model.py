@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
+from uuid import UUID
 
 from sqlalchemy import (
-    CheckConstraint,
+    BigInteger,
     Date,
     DateTime,
+    Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
-    Integer,
-    Numeric,
     String,
+    Text,
     UniqueConstraint,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -23,17 +25,20 @@ from src.db.database import Base
 class TripModel(Base):
     __tablename__ = "trips"
     __table_args__ = (
-        CheckConstraint("start_date <= end_date", name="ck_trips_start_before_end"),
+        UniqueConstraint("owner_id", "client_request_id", name="uq_trip_owner_request"),
+        Index("ix_trips_owner_start_id", "owner_id", "start_date", "id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    title: Mapped[str] = mapped_column(nullable=False)
-    country: Mapped[str] = mapped_column(nullable=False)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    country: Mapped[str] = mapped_column(String(200), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
-    description: Mapped[str | None] = mapped_column()
-    cover_url: Mapped[str | None] = mapped_column()
+    timezone: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    cover_url: Mapped[str | None] = mapped_column(String(2048))
+    client_request_id: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -44,35 +49,85 @@ class TripModel(Base):
 
 class TripMemberModel(Base):
     __tablename__ = "trip_members"
-    __table_args__ = (
-        CheckConstraint("role IN ('owner', 'editor', 'viewer')", name="ck_trip_members_role"),
-        Index("ix_trip_members_user_id", "user_id"),
-    )
+    __table_args__ = (Index("ix_trip_members_user_id_trip_id", "user_id", "trip_id"),)
 
     trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True)
-    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(10), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class PlaceModel(Base):
+    __tablename__ = "places"
+    __table_args__ = (
+        UniqueConstraint("id", "trip_id", name="uq_places_id_trip_id"),
+        UniqueConstraint("trip_id", "client_request_id", name="uq_place_trip_request"),
+        Index("ix_places_trip_id_id", "trip_id", "id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    address: Mapped[str | None] = mapped_column(String(1000))
+    latitude: Mapped[float] = mapped_column(Float, nullable=False)
+    longitude: Mapped[float] = mapped_column(Float, nullable=False)
+    client_request_id: Mapped[UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
 
 class EventModel(Base):
     __tablename__ = "events"
     __table_args__ = (
-        CheckConstraint("type IN ('excursion', 'movement')", name="ck_events_type"),
-        CheckConstraint("end_at IS NULL OR end_at >= start_at", name="ck_events_time_order"),
-        Index("ix_events_trip_id_start_at", "trip_id", "start_at"),
+        ForeignKeyConstraint(
+            ["place_id", "trip_id"],
+            ["places.id", "places.trip_id"],
+            ondelete="RESTRICT",
+            name="fk_event_place",
+        ),
+        ForeignKeyConstraint(
+            ["from_place_id", "trip_id"],
+            ["places.id", "places.trip_id"],
+            ondelete="RESTRICT",
+            name="fk_event_from_place",
+        ),
+        ForeignKeyConstraint(
+            ["to_place_id", "trip_id"],
+            ["places.id", "places.trip_id"],
+            ondelete="RESTRICT",
+            name="fk_event_to_place",
+        ),
+        UniqueConstraint("trip_id", "client_request_id", name="uq_event_trip_request"),
+        Index("ix_events_trip_id_start_at_id", "trip_id", "start_at", "id"),
+        Index("ix_event_place", "place_id"),
+        Index("ix_event_from_place", "from_place_id"),
+        Index("ix_event_to_place", "to_place_id"),
+        Index("ix_event_created_by", "created_by"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), nullable=False)
-    created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    type: Mapped[str] = mapped_column(String(32), nullable=False)
-    title: Mapped[str] = mapped_column(nullable=False)
-    description: Mapped[str | None] = mapped_column()
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    type: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    booking_url: Mapped[str | None] = mapped_column(String(2048))
+    place_id: Mapped[int | None] = mapped_column()
+    category: Mapped[str | None] = mapped_column(String(16))
+    from_place_id: Mapped[int | None] = mapped_column()
+    to_place_id: Mapped[int | None] = mapped_column()
+    transport_type: Mapped[str | None] = mapped_column(String(16))
+    departure_timezone: Mapped[str | None] = mapped_column(String(64))
+    arrival_timezone: Mapped[str | None] = mapped_column(String(64))
+    client_request_id: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -81,110 +136,53 @@ class EventModel(Base):
     )
 
     place: Mapped[PlaceModel | None] = relationship(
-        back_populates="event",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        uselist=False,
+        primaryjoin="and_(EventModel.place_id == PlaceModel.id, EventModel.trip_id == PlaceModel.trip_id)",
+        foreign_keys="[EventModel.place_id, EventModel.trip_id]",
+        viewonly=True,
+        lazy="raise",
     )
-    excursion_details: Mapped[ExcursionDetailModel | None] = relationship(
-        back_populates="event",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        uselist=False,
+    from_place: Mapped[PlaceModel | None] = relationship(
+        primaryjoin="and_(EventModel.from_place_id == PlaceModel.id, EventModel.trip_id == PlaceModel.trip_id)",
+        foreign_keys="[EventModel.from_place_id, EventModel.trip_id]",
+        viewonly=True,
+        lazy="raise",
     )
-    movement_details: Mapped[MovementDetailModel | None] = relationship(
-        back_populates="event",
-        foreign_keys=lambda: [MovementDetailModel.event_id],
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        uselist=False,
+    to_place: Mapped[PlaceModel | None] = relationship(
+        primaryjoin="and_(EventModel.to_place_id == PlaceModel.id, EventModel.trip_id == PlaceModel.trip_id)",
+        foreign_keys="[EventModel.to_place_id, EventModel.trip_id]",
+        viewonly=True,
+        lazy="raise",
     )
     attachments: Mapped[list[AttachmentModel]] = relationship(
         back_populates="event",
         cascade="all, delete-orphan",
         passive_deletes=True,
         order_by="AttachmentModel.id",
-    )
-
-
-class PlaceModel(Base):
-    __tablename__ = "places"
-    __table_args__ = (
-        UniqueConstraint("event_id", name="uq_places_event_id"),
-        CheckConstraint("latitude >= -90 AND latitude <= 90", name="ck_places_latitude"),
-        CheckConstraint("longitude >= -180 AND longitude <= 180", name="ck_places_longitude"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    name: Mapped[str] = mapped_column(nullable=False)
-    address: Mapped[str | None] = mapped_column()
-    latitude: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False)
-    longitude: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    event: Mapped[EventModel] = relationship(back_populates="place")
-
-
-class ExcursionDetailModel(Base):
-    __tablename__ = "excursion_details"
-
-    event_id: Mapped[int] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
-    )
-    category: Mapped[str] = mapped_column(nullable=False)
-    booking_url: Mapped[str | None] = mapped_column()
-    notes: Mapped[str | None] = mapped_column()
-
-    event: Mapped[EventModel] = relationship(back_populates="excursion_details")
-
-
-class MovementDetailModel(Base):
-    __tablename__ = "movement_details"
-    __table_args__ = (
-        CheckConstraint("from_event_id <> to_event_id", name="ck_movement_distinct_endpoints"),
-        CheckConstraint(
-            "transport_type IN ('walk', 'car', 'train', 'plane', 'other')",
-            name="ck_movement_transport_type",
-        ),
-    )
-
-    event_id: Mapped[int] = mapped_column(
-        ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
-    )
-    # RESTRICT: событие нельзя удалить, пока оно начало или конец перемещения.
-    from_event_id: Mapped[int] = mapped_column(
-        ForeignKey("events.id", ondelete="RESTRICT"), nullable=False
-    )
-    to_event_id: Mapped[int] = mapped_column(
-        ForeignKey("events.id", ondelete="RESTRICT"), nullable=False
-    )
-    transport_type: Mapped[str] = mapped_column(String(32), nullable=False)
-
-    event: Mapped[EventModel] = relationship(
-        back_populates="movement_details",
-        foreign_keys=[event_id],
+        lazy="raise",
     )
 
 
 class AttachmentModel(Base):
     __tablename__ = "attachments"
+    __table_args__ = (
+        UniqueConstraint("storage_key", name="uq_attachment_storage_key"),
+        UniqueConstraint("event_id", "client_request_id", name="uq_attachment_event_request"),
+        Index("ix_attachment_uploaded_by", "uploaded_by"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
-    file_url: Mapped[str] = mapped_column(nullable=False)
-    thumbnail_url: Mapped[str | None] = mapped_column()
-    file_name: Mapped[str] = mapped_column(nullable=False)
-    mime_type: Mapped[str] = mapped_column(nullable=False)
-    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    uploaded_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    thumbnail_key: Mapped[str] = mapped_column(String(1024), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    width: Mapped[int] = mapped_column(nullable=False)
+    height: Mapped[int] = mapped_column(nullable=False)
+    client_request_id: Mapped[UUID | None] = mapped_column(Uuid)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    event: Mapped[EventModel] = relationship(back_populates="attachments")
+    event: Mapped[EventModel] = relationship(back_populates="attachments", lazy="raise")

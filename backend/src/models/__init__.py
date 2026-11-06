@@ -3,8 +3,6 @@ from src.models.auth_session_model import AuthSessionModel
 from src.models.trip_model import (
     AttachmentModel,
     EventModel,
-    ExcursionDetailModel,
-    MovementDetailModel,
     PlaceModel,
     TripMemberModel,
     TripModel,

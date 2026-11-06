@@ -18,14 +18,16 @@ variables:
 test_backend:
   stage: test
   image: python:3.14-slim
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+      # Project CI variables override this job's variables. The image reads
+      # POSTGRES_USER, Settings reads POSTGRES_USERNAME, so the role is pinned here.
+      entrypoint: ["sh", "-c"]
+      command:
+        - "export POSTGRES_USER=test POSTGRES_PASSWORD=test POSTGRES_DB=test; exec docker-entrypoint.sh postgres"
   variables:
     PIP_CACHE_DIR: $CI_PROJECT_DIR/.pip-cache
-    POSTGRES_HOST: localhost
-    POSTGRES_PORT: "5432"
-    POSTGRES_USERNAME: test
-    POSTGRES_PASSWORD: test
-    POSTGRES_DATABASE: test
-    SECRET_KEY: ci-test-secret-not-for-prod
   cache:
     key: pip-$CI_COMMIT_REF_SLUG
     paths:
@@ -33,6 +35,13 @@ test_backend:
   script:
     - cd backend
     - pip install -q -r requirements.txt
+    - export PYTEST_USE_TESTCONTAINERS=0
+    - export POSTGRES_HOST=postgres
+    - export POSTGRES_PORT=5432
+    - export POSTGRES_USERNAME=test
+    - export POSTGRES_PASSWORD=test
+    - export POSTGRES_DATABASE=test
+    - export SECRET_KEY=ci-test-secret-not-for-prod
     - python -m pytest -q --junitxml=report.xml
   artifacts:
     when: always
