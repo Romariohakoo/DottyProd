@@ -14,3 +14,4 @@ class AuthSessionModel(Base):
     refresh_token_jti: Mapped[str] = mapped_column(String(36))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
