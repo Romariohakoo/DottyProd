@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     telegram_client_id: str = ""
     telegram_client_secret: str = ""
     telegram_redirect_uri: str = "http://localhost:8080/api/auth/telegram/callback"
+    telegram_bot_token: str = ""
+    telegram_notifications_enabled: bool = False
     frontend_url: str = "http://localhost:3000"
 
     cors_origins: str = "http://localhost:3000"

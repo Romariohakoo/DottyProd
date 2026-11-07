@@ -1,5 +1,6 @@
 # TODO: Импортировать сюда все модели, чтобы Alembic видел их при --autogenerate
 from src.models.auth_session_model import AuthSessionModel
+from src.models.notification_model import NotificationModel
 from src.models.trip_model import (
     AttachmentModel,
     EventModel,

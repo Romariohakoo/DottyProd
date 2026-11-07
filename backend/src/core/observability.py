@@ -63,6 +63,8 @@ def setup_logging(level: str = "INFO") -> None:
         uvicorn_logger.propagate = True
     # access-лог пишет наш middleware, с request_id и длительностью
     logging.getLogger("uvicorn.access").disabled = True
+    # Telegram Bot API embeds the token in the request URL; httpx logs that URL at INFO.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 @lru_cache(maxsize=256)

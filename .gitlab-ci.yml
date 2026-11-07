@@ -182,6 +182,15 @@ deploy:
     - job: build_backend
       artifacts: false
   script:
+    - |
+      if ! grep -q '^TELEGRAM_BOT_TOKEN=.' "$BACKEND_ENV"; then
+        if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
+          echo "Telegram token is missing: set it in BACKEND_ENV or TELEGRAM_BOT_TOKEN CI variable"
+          exit 1
+        fi
+        printf '\nTELEGRAM_BOT_TOKEN=%s\n' "$TELEGRAM_BOT_TOKEN" >> "$BACKEND_ENV"
+      fi
+      printf '\nTELEGRAM_NOTIFICATIONS_ENABLED=true\n' >> "$BACKEND_ENV"
     - $SSH $VM "mkdir -p ~/app"
     - $SSH $VM "if [ -d ~/app/nginx.conf ]; then sudo rm -rf ~/app/nginx.conf; fi"
     - $SSH $VM "if [ -d ~/app/.env ]; then sudo rm -rf ~/app/.env; fi"
