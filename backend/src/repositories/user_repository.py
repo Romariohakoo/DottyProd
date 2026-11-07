@@ -46,7 +46,7 @@ class UserRepository:
 
         user = UserModel(
             username=chosen_username,
-            email=f"tg_{telegram_id}@telegram.local",
+            email=f"tg_{telegram_id}@telegram.org",
             hashed_password="",
             telegram_id=telegram_id,
             name=name,
