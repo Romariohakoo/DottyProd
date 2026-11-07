@@ -48,6 +48,7 @@ ATTACHMENT_NOT_FOUND = "Attachment not found"
 INSUFFICIENT_ROLE = "Insufficient role"
 PLACE_IN_USE = "Place is used by events"
 EVENT_TYPE_IMMUTABLE = "Event type cannot be changed"
+EVENT_OUTSIDE_TRIP = "Event dates must be within the trip dates"
 FILE_TOO_LARGE = "File is too large"
 TOO_MANY_ATTACHMENTS = "Too many attachments"
 UNSUPPORTED_FILE = "Only JPEG and PNG are supported"
@@ -147,6 +148,7 @@ class TripService:
             existing = await self.trips.get_event_by_request(access.trip.id, data.client_request_id)
             if existing is not None:
                 return self._event_dto(existing)
+        await self._validate_event_dates(access.trip, data)
         event = EventModel(
             trip_id=access.trip.id,
             created_by=user.id,
@@ -169,6 +171,7 @@ class TripService:
         if data.type != event.type:
             raise InvalidDataError(EVENT_TYPE_IMMUTABLE)
         await self.trips.lock_trip(access.trip.id)
+        await self._validate_event_dates(access.trip, data)
         event.title = data.title
         event.description = data.description
         event.start_at = data.start_at
@@ -177,6 +180,15 @@ class TripService:
         await self._apply_event(access.trip.id, event, data)
         await self._commit()
         return await self._event_response(access.trip, event.id)
+
+    async def _validate_event_dates(self, trip: TripModel, data: EventInput) -> None:
+        # Read current bounds after acquiring the trip lock: access may have been
+        # loaded before another request changed the dates. There is no trip timezone;
+        # compare the calendar dates in the offsets supplied by the client.
+        await self.session.refresh(trip, attribute_names=["start_date", "end_date"])
+        moments = (data.start_at,) if data.end_at is None else (data.start_at, data.end_at)
+        if any(not trip.start_date <= moment.date() <= trip.end_date for moment in moments):
+            raise InvalidDataError(EVENT_OUTSIDE_TRIP)
 
     async def delete_event(self, access: TripAccess, event: EventModel) -> None:
         self._require_content_access(access)

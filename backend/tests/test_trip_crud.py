@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import pytest
 
 from src.models.trip_model import TripMemberModel
 from tests.test_trips import TRIPS_URL, _register
@@ -77,6 +78,37 @@ def _create_trip(client, headers, **overrides):
     response = client.post(TRIPS_URL, headers=headers, json=_trip_payload(**overrides))
     assert response.status_code == 201, response.json()
     return response.json()
+
+
+@pytest.mark.parametrize("start,end", [
+    ("2026-11-03T23:59:00+03:00", None),
+    ("2026-12-03T12:00:00+03:00", None),
+    ("2026-11-18T23:00:00+03:00", "2026-11-19T00:00:00+03:00"),
+])
+def test_event_outside_trip_is_rejected_without_creating_places(client, start, end):
+    _, headers = _register(client, "anna", "anna@example.com")
+    trip_id = _create_trip(client, headers, start_date="2026-11-04", end_date="2026-11-18")["id"]
+    response = client.post(f"{TRIPS_URL}/{trip_id}/events", headers=headers,
+                           json=_activity_payload(start_at=start, end_at=end))
+    assert response.status_code == 422
+    assert response.json()["reason"] == "Event dates must be within the trip dates"
+    detail = client.get(f"{TRIPS_URL}/{trip_id}", headers=headers).json()
+    assert detail["timeline"] == [] and detail["places"] == []
+
+
+def test_event_trip_date_boundaries_and_update(client):
+    _, headers = _register(client, "anna", "anna@example.com")
+    trip_id = _create_trip(client, headers, start_date="2026-11-04", end_date="2026-11-18")["id"]
+    payload = _activity_payload(start_at="2026-11-04T00:00:00+03:00",
+                                end_at="2026-11-18T23:59:59+03:00", place=None)
+    created = client.post(f"{TRIPS_URL}/{trip_id}/events", headers=headers, json=payload)
+    assert created.status_code == 201, created.text
+    event_id = created.json()["id"]
+    invalid = payload | {"start_at": "2026-12-03T12:00:00+03:00", "end_at": None}
+    response = client.put(f"{TRIPS_URL}/{trip_id}/events/{event_id}", headers=headers, json=invalid)
+    assert response.status_code == 422
+    detail = client.get(f"{TRIPS_URL}/{trip_id}", headers=headers).json()
+    assert datetime.fromisoformat(detail["timeline"][0]["start_at"]) == datetime.fromisoformat(created.json()["start_at"])
 
 
 def test_trip_writes_require_auth(client):
@@ -389,8 +421,8 @@ def test_create_movement_uses_places_and_rejects_foreign_place(client):
             {"name": "Шереметьево", "latitude": 55.973, "longitude": 37.415},
             title="Перелёт",
             transport_type="plane",
-            start_at="2026-06-09T20:00:00+03:00",
-            end_at="2026-06-09T21:30:00+03:00",
+            start_at="2026-06-10T20:00:00+03:00",
+            end_at="2026-06-10T21:30:00+03:00",
         ),
     )
     assert both_new.status_code == 201, both_new.json()
