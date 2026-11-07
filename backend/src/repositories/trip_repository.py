@@ -1,7 +1,8 @@
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import case, delete, func, or_, select
+from sqlalchemy import and_, case, delete, func, or_, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +14,15 @@ _EVENT_LOADS = (
     selectinload(EventModel.to_place),
     selectinload(EventModel.attachments),
 )
+
+
+@dataclass(frozen=True, slots=True)
+class UserStatsRow:
+    trips_count: int
+    countries_count: int
+    cities_count: int
+    excursions_count: int
+    spent_rub: int
 
 
 class TripRepository:
@@ -30,6 +40,67 @@ class TripRepository:
             .order_by(TripModel.start_date, TripModel.id)
         )
         return list(result.all())
+
+    async def stats_for_user(self, user_id: int) -> UserStatsRow:
+        membership = (TripMemberModel.trip_id == TripModel.id) & (TripMemberModel.user_id == user_id)
+        accessible = (
+            select(TripModel.id)
+            .outerjoin(TripMemberModel, membership)
+            .where(or_(TripModel.owner_id == user_id, TripMemberModel.user_id == user_id))
+            .distinct()
+            .subquery()
+        )
+        accessible_ids = select(accessible.c.id)
+        completed = and_(TripModel.id.in_(accessible_ids), TripModel.end_date < func.current_date())
+        past_event = and_(EventModel.trip_id.in_(accessible_ids), EventModel.start_at < func.now())
+        visited_places = union(
+            select(EventModel.place_id.label("id")).where(past_event, EventModel.place_id.is_not(None)),
+            select(EventModel.from_place_id.label("id")).where(past_event, EventModel.from_place_id.is_not(None)),
+            select(EventModel.to_place_id.label("id")).where(past_event, EventModel.to_place_id.is_not(None)),
+        ).subquery()
+        city_key = func.lower(func.btrim(PlaceModel.address))
+        trips_count = select(func.count()).select_from(TripModel).where(completed).scalar_subquery()
+        countries_count = (
+            select(func.count(func.distinct(func.lower(func.btrim(TripModel.country)))))
+            .where(completed)
+            .scalar_subquery()
+        )
+        cities_count = (
+            select(func.count(func.distinct(city_key)))
+            .where(
+                PlaceModel.id.in_(select(visited_places.c.id)),
+                PlaceModel.address.is_not(None),
+                func.btrim(PlaceModel.address) != "",
+            )
+            .scalar_subquery()
+        )
+        excursions_count = (
+            select(func.count())
+            .select_from(EventModel)
+            .where(past_event, EventModel.type == "activity", EventModel.category == "excursion")
+            .scalar_subquery()
+        )
+        spent_rub = (
+            select(func.coalesce(func.sum(EventModel.cost_rub), 0)).where(past_event).scalar_subquery()
+        )
+        row = (
+            await self.session.execute(
+                select(
+                    trips_count.label("trips_count"),
+                    countries_count.label("countries_count"),
+                    cities_count.label("cities_count"),
+                    excursions_count.label("excursions_count"),
+                    spent_rub.label("spent_rub"),
+                )
+            )
+        ).one()
+        return UserStatsRow(
+            trips_count=row.trips_count,
+            countries_count=row.countries_count,
+            cities_count=row.cities_count,
+            excursions_count=row.excursions_count,
+            spent_rub=int(row.spent_rub),
+        )
 
     async def get_by_id(self, trip_id: int) -> TripModel | None:
         return await self.session.get(TripModel, trip_id)

@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from src.core.dependencies import CurrentUser
 from src.routers.access import MemberTrip, OwnedTrip, TripServiceDep
-from src.schemas.travel import ScheduleIssues, TripCard, TripDTO, TripDetail, TripInput
+from src.schemas.travel import ScheduleIssues, TripCard, TripDTO, TripDetail, TripInput, UserStats
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -11,6 +11,12 @@ router = APIRouter(prefix="/trips", tags=["trips"])
 async def list_trips(user: CurrentUser, trips: TripServiceDep):
     """Доступные поездки, сортировка (start_date, id)."""
     return await trips.list_trips(user)
+
+
+@router.get("/stats", response_model=UserStats)
+async def trip_stats(user: CurrentUser, trips: TripServiceDep):
+    """Статистика по доступным поездкам: завершённые путешествия и прошедшие события."""
+    return await trips.stats(user)
 
 
 @router.get("/schedule-issues", response_model=ScheduleIssues)

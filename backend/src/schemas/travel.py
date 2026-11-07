@@ -65,6 +65,7 @@ class EventBase(Strict):
     start_at: AwareDatetime
     end_at: AwareDatetime | None = None
     booking_url: Url | None = None
+    cost_rub: int | None = Field(default=None, ge=0, le=2_000_000_000)
     client_request_id: UUID | None = None
 
     @model_validator(mode="after")
@@ -141,6 +142,7 @@ class EventBaseDTO(FromORM):
     start_at: datetime
     end_at: datetime | None
     booking_url: str | None
+    cost_rub: int | None
     created_by: int
     attachments: list[AttachmentDTO]
 
@@ -193,6 +195,14 @@ class TripScheduleIssues(BaseModel):
 class ScheduleIssues(BaseModel):
     trip_overlaps: list[TripOverlap]
     trips: list[TripScheduleIssues]
+
+
+class UserStats(BaseModel):
+    trips_count: int
+    countries_count: int
+    cities_count: int
+    excursions_count: int
+    spent_rub: int
 
 
 @dataclass(frozen=True)

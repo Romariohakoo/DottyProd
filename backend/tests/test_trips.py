@@ -296,3 +296,133 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
     }
     bare = body["timeline"][4]
     assert bare["place"] is None
+
+
+def test_stats_counts_past_accessible_trips(client, db_session):
+    assert client.get(f"{TRIPS_URL}/stats").status_code == 401
+
+    anna_id, anna_headers = _register(client, "anna", "anna@example.com")
+    boris_id, _ = _register(client, "boris", "boris@example.com")
+
+    empty = client.get(f"{TRIPS_URL}/stats", headers=anna_headers)
+    assert empty.status_code == 200
+    assert empty.json() == {
+        "trips_count": 0,
+        "countries_count": 0,
+        "cities_count": 0,
+        "excursions_count": 0,
+        "spent_rub": 0,
+    }
+
+    today = date.today()
+    now = datetime.now(timezone.utc)
+    past = now - timedelta(days=3)
+    recent = now - timedelta(hours=6)
+    future = now + timedelta(days=3)
+
+    def seed(session):
+        own = _trip(
+            anna_id,
+            "Казань",
+            today - timedelta(days=10),
+            end_date=today - timedelta(days=2),
+            country="Россия",
+        )
+        shared = _trip(
+            boris_id,
+            "Татарстан",
+            today - timedelta(days=10),
+            end_date=today - timedelta(days=2),
+            country="россия",
+        )
+        ongoing = _trip(
+            anna_id,
+            "Рим",
+            today - timedelta(days=1),
+            end_date=today + timedelta(days=5),
+            country="Италия",
+        )
+        hidden = _trip(
+            boris_id,
+            "Париж",
+            today - timedelta(days=10),
+            end_date=today - timedelta(days=2),
+            country="Франция",
+        )
+        session.add_all([own, shared, ongoing, hidden])
+
+        async def finish():
+            await session.flush()
+            session.add(_member(shared.id, anna_id, "viewer", datetime(2026, 1, 1, tzinfo=timezone.utc)))
+
+            def place(trip_id, name, address):
+                return PlaceModel(
+                    trip_id=trip_id,
+                    name=name,
+                    address=address,
+                    latitude=55.7,
+                    longitude=49.1,
+                )
+
+            kazan = place(own.id, "Кремль", "Казань")
+            kazan_again = place(own.id, "Баумана", "Казань")
+            no_address = place(own.id, "Без адреса", None)
+            sochi = place(own.id, "Сочи", "Сочи")
+            kazan_shared = place(shared.id, "Кремль", "казань ")
+            moscow = place(shared.id, "Москва", "Москва")
+            blank = place(shared.id, "Пусто", "   ")
+            rome = place(ongoing.id, "Колизей", "Рим")
+            paris = place(hidden.id, "Лувр", "Париж")
+            session.add_all([kazan, kazan_again, no_address, sochi, kazan_shared, moscow, blank, rome, paris])
+            await session.flush()
+
+            def activity(trip_id, title, start, category, place_id, cost):
+                return EventModel(
+                    trip_id=trip_id,
+                    created_by=anna_id,
+                    type="activity",
+                    title=title,
+                    start_at=start,
+                    category=category,
+                    place_id=place_id,
+                    cost_rub=cost,
+                )
+
+            session.add_all(
+                [
+                    activity(own.id, "Экскурсия", past, "excursion", kazan.id, 1000),
+                    activity(own.id, "Ещё экскурсия", past, "excursion", kazan_again.id, 250),
+                    activity(own.id, "Музей", past, "museum", no_address.id, 100),
+                    activity(own.id, "Будущая", future, "excursion", sochi.id, 9000),
+                    activity(shared.id, "Общая экскурсия", past, "excursion", kazan_shared.id, None),
+                    EventModel(
+                        trip_id=shared.id,
+                        created_by=boris_id,
+                        type="movement",
+                        title="Поезд",
+                        start_at=past,
+                        from_place_id=kazan_shared.id,
+                        to_place_id=moscow.id,
+                        transport_type="train",
+                        cost_rub=400,
+                    ),
+                    activity(shared.id, "Пустой адрес", past, "walk", blank.id, 50),
+                    activity(ongoing.id, "Римская экскурсия", recent, "excursion", rome.id, 200),
+                    activity(hidden.id, "Чужая экскурсия", past, "excursion", paris.id, 5000),
+                ]
+            )
+
+        return finish()
+
+    db_session(seed)
+
+    response = client.get(f"{TRIPS_URL}/stats", headers=anna_headers)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "trips_count": 2,
+        "countries_count": 1,
+        "cities_count": 3,
+        "excursions_count": 4,
+        "spent_rub": 2000,
+    }

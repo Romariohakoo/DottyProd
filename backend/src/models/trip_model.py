@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -103,6 +104,7 @@ class EventModel(Timestamps, Base):
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     booking_url: Mapped[str | None] = mapped_column(String(2048))
+    cost_rub: Mapped[int | None] = mapped_column(Integer)
     client_request_id: Mapped[UUID | None]
 
     place_id: Mapped[int | None]

@@ -39,6 +39,7 @@ from src.schemas.travel import (
     TripDTO,
     TripDetail,
     TripInput,
+    UserStats,
 )
 from src.services.schedule_check import EventInterval, TripInterval, find_schedule_issues
 from src.storage.s3 import get_storage
@@ -66,6 +67,7 @@ _INVALID_INPUT_CONSTRAINTS = frozenset(
         "ck_event_activity_fields",
         "ck_event_movement_fields",
         "ck_place_coordinates",
+        "ck_event_cost_rub",
     }
 )
 
@@ -109,6 +111,16 @@ class TripService:
     async def list_trips(self, user: UserModel) -> list[TripCard]:
         rows = await self.trips.list_for_user(user.id)
         return [_trip_card(trip, role) for trip, role in rows]
+
+    async def stats(self, user: UserModel) -> UserStats:
+        row = await self.trips.stats_for_user(user.id)
+        return UserStats(
+            trips_count=row.trips_count,
+            countries_count=row.countries_count,
+            cities_count=row.cities_count,
+            excursions_count=row.excursions_count,
+            spent_rub=row.spent_rub,
+        )
 
     async def schedule_issues(self, user: UserModel) -> ScheduleIssues:
         rows = await self.trips.list_for_user(user.id)
@@ -371,6 +383,7 @@ class TripService:
         event.start_at = data.start_at
         event.end_at = data.end_at
         event.booking_url = data.booking_url
+        event.cost_rub = data.cost_rub
 
         if isinstance(data, ActivityInput):
             place = None if data.place is None else await self._resolve_place(event.trip_id, data.place)
