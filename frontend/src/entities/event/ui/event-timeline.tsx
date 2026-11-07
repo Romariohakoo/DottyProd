@@ -181,7 +181,26 @@ export function EventTimeline({
   return (
     <section className="min-w-0 space-y-3" aria-label="Таймлайн событий">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="m3-title">Таймлайн</h3>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <h3 className="m3-title">Таймлайн</h3>
+          <ul
+            aria-label="Обозначения"
+            className="flex flex-wrap gap-4 text-xs font-bold text-on-surface-variant"
+          >
+            <li className="flex items-center gap-2">
+              <span className="h-2.5 w-7 rounded-full bg-primary" />
+              Длится
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="size-3 rounded-full border-[3px] border-primary bg-surface-bright" />
+              Момент
+            </li>
+            <li className="flex items-center gap-2">
+              <span className="h-0 w-7 border-t-2 border-dashed border-on-surface-variant" />
+              Дорога
+            </li>
+          </ul>
+        </div>
         <div className="flex w-full min-w-0 items-end gap-3 sm:w-auto">
           <div className="min-w-0 flex-1 sm:w-48">
             <FormField
@@ -260,7 +279,7 @@ export function EventTimeline({
         role="region"
         aria-label="Временная шкала событий, горизонтальная прокрутка"
         tabIndex={0}
-        className="max-w-full cursor-grab overflow-x-auto overscroll-x-contain rounded-small border border-outline-variant bg-surface-container-low p-3 select-none active:cursor-grabbing"
+        className="max-w-full cursor-grab overflow-x-auto overscroll-x-contain rounded-large border border-outline-variant bg-surface-bright p-3 select-none active:cursor-grabbing"
         onPointerDown={(event) => {
           suppressClick.current = false;
           if (
@@ -369,7 +388,12 @@ export function EventTimeline({
                       y1={labelY + LABEL_HEIGHT}
                       y2={axisY}
                       aria-hidden="true"
-                      className="stroke-outline-variant"
+                      strokeDasharray={event.endAt === null ? "3 4" : undefined}
+                      className={
+                        event.endAt === null
+                          ? "stroke-primary stroke-2"
+                          : "stroke-outline-variant"
+                      }
                     />
                   ) : null}
                   <foreignObject
@@ -400,7 +424,15 @@ export function EventTimeline({
                       }}
                       className="group pointer-events-none relative block h-full w-full cursor-pointer text-left focus-visible:outline-none"
                     >
-                      <span className="pointer-events-auto absolute top-1 left-1/2 block w-40 -translate-x-1/2 truncate rounded-small bg-primary-container px-3 py-2 text-sm font-semibold text-on-primary-container group-hover:bg-secondary-container group-hover:text-on-secondary-container group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-primary">
+                      <span
+                        className={`pointer-events-auto absolute top-1 left-1/2 block w-40 -translate-x-1/2 truncate rounded-small px-3 py-2 text-sm font-bold transition-colors group-focus-visible:outline-2 group-focus-visible:outline-offset-2 group-focus-visible:outline-primary ${
+                          event.type === "movement"
+                            ? "bg-surface-container text-on-surface group-hover:bg-surface-container-high"
+                            : event.endAt === null
+                              ? "bg-surface-bright text-on-primary-container ring-2 ring-primary ring-inset group-hover:bg-primary-container"
+                              : "bg-primary text-on-primary group-hover:bg-on-primary-container"
+                        }`}
+                      >
                         {event.title}
                       </span>
                       <svg
@@ -425,7 +457,8 @@ export function EventTimeline({
                             fill="none"
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            className="pointer-events-auto stroke-primary stroke-2"
+                            strokeDasharray="5 6"
+                            className="pointer-events-auto stroke-on-surface-variant stroke-2"
                           >
                             <path
                               d={`M ${arrowStart} ${arrowY} Q ${(arrowStart + arrowEnd) / 2} ${arrowY - arrowRise * 2} ${arrowEnd} ${arrowY}`}
@@ -442,14 +475,15 @@ export function EventTimeline({
                             y1={TARGET_SIZE / 2}
                             y2={TARGET_SIZE / 2}
                             strokeLinecap="round"
-                            className="pointer-events-auto stroke-primary stroke-8"
+                            className="pointer-events-auto stroke-primary stroke-[10]"
                           />
                         ) : (
                           <circle
                             cx={markerX}
                             cy={TARGET_SIZE / 2}
-                            r={6}
-                            className="pointer-events-auto fill-primary"
+                            r={7}
+                            strokeWidth={3}
+                            className="pointer-events-auto fill-surface-bright stroke-primary"
                           />
                         )}
                       </svg>
