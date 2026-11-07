@@ -19,13 +19,15 @@ from src.core.domain import (
     PlaceInUse,
     UnsupportedFile,
 )
-from src.models.trip_model import AttachmentModel, EventModel, PlaceModel, TripModel
+from src.models.trip_model import AttachmentModel, EventCommentModel, EventModel, PlaceModel, TripModel
 from src.models.user_model import UserModel
 from src.repositories.trip_repository import TripRepository
 from src.schemas.travel import (
     ActivityDTO,
     ActivityInput,
     AttachmentDTO,
+    CommentDTO,
+    CommentInput,
     EventDTO,
     EventInput,
     MovementDTO,
@@ -48,6 +50,7 @@ TRIP_NOT_FOUND = "Trip not found"
 EVENT_NOT_FOUND = "Event not found"
 PLACE_NOT_FOUND = "Place not found"
 ATTACHMENT_NOT_FOUND = "Attachment not found"
+COMMENT_NOT_FOUND = "Comment not found"
 INSUFFICIENT_ROLE = "Insufficient role"
 PLACE_IN_USE = "Place is used by events"
 EVENT_TYPE_IMMUTABLE = "Event type cannot be changed"
@@ -264,6 +267,40 @@ class TripService:
         moments = (data.start_at,) if data.end_at is None else (data.start_at, data.end_at)
         if any(not trip.start_date <= moment.date() <= trip.end_date for moment in moments):
             raise InvalidDataError(EVENT_OUTSIDE_TRIP)
+
+    async def list_comments(self, access: TripAccess, event_id: int) -> list[CommentDTO]:
+        event = await self.require_event(access.trip.id, event_id)
+        comments = await self.trips.list_comments(event.id)
+        return [CommentDTO.model_validate(comment) for comment in comments]
+
+    async def create_comment(
+        self, user: UserModel, access: TripAccess, event_id: int, data: CommentInput
+    ) -> CommentDTO:
+        require_role(access, EDITORS)
+        await self.trips.lock_trip(access.trip.id)
+        event = await self.require_event(access.trip.id, event_id)
+
+        comment = EventCommentModel(event_id=event.id, author_id=user.id, body=data.body)
+        self.session.add(comment)
+        await self._commit()
+
+        stored = await self.trips.get_comment(event.id, comment.id)
+        if stored is None:
+            raise NotFoundError(COMMENT_NOT_FOUND)
+        return CommentDTO.model_validate(stored)
+
+    async def delete_comment(self, user: UserModel, access: TripAccess, event_id: int, comment_id: int) -> None:
+        await self.trips.lock_trip(access.trip.id)
+        await self.require_event(access.trip.id, event_id)
+
+        comment = await self.trips.get_comment(event_id, comment_id)
+        if comment is None:
+            raise NotFoundError(COMMENT_NOT_FOUND)
+        if comment.author_id != user.id and access.role != "owner":
+            raise ForbiddenError(INSUFFICIENT_ROLE)
+
+        await self.session.delete(comment)
+        await self._commit()
 
     async def delete_event(self, access: TripAccess, event: EventModel) -> None:
         require_role(access, EDITORS)
