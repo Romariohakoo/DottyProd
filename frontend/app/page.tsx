@@ -27,7 +27,7 @@ export default function Home() {
     <main id="main-content" className="m3-page">
       <section className="m3-hero" aria-labelledby="home-heading">
         <div className="m3-hero-copy">
-          <p className="m3-eyebrow">TRAVELHUB / ВАШИ ПУТЕШЕСТВИЯ</p>
+          <p className="m3-eyebrow">DOTTY · ВАШИ ПУТЕШЕСТВИЯ</p>
           <h1 id="home-heading" className="m3-display">
             Больше мест.
             <br />

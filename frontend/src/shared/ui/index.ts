@@ -8,3 +8,5 @@ export * from "./select-field";
 export * from "./status-message";
 export * from "./date-time-text";
 export * from "./date-picker";
+export * from "./icon";
+export * from "./range-calendar";
