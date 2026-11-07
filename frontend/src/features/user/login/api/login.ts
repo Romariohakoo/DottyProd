@@ -9,7 +9,7 @@ export const login = async (data: LoginDto) => {
 };
 
 export const startTelegramLogin = async () => {
-  const response = await api.post<{ authorization_url: string }>(
+  const response = await api.post<{ authorizationUrl: string }>(
     "/auth/telegram/start",
   );
   return response.data;

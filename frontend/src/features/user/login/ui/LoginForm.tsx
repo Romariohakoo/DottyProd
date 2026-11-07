@@ -42,8 +42,8 @@ export function LoginForm() {
     try {
       setTgError(null);
       setTgPending(true);
-      const { authorization_url } = await startTelegramLogin();
-      window.location.assign(authorization_url);
+      const { authorizationUrl } = await startTelegramLogin();
+      window.location.assign(authorizationUrl);
     } catch {
       setTgError("Не удалось запустить вход через Telegram.");
       setTgPending(false);
