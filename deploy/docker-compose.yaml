@@ -30,7 +30,6 @@ services:
       timeout: 3s
       retries: 15
   caddy:
-    # HTTPS: сам получает и продлевает сертификат Let's Encrypt, дальше всё отдаёт nginx
     image: caddy:2.10-alpine
     restart: unless-stopped
     ports:

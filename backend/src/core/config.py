@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     upload_max_pixels: int = 40_000_000
     upload_max_per_event: int = 20
 
+    # Создавать при старте демо-пользователей user1name…user7name (src/services/demo_users.py)
+    seed_demo_users: bool = True
+
     @field_validator("cookie_samesite", mode="before")
     @classmethod
     def _lowercase_samesite(cls, value):

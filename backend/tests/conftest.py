@@ -5,6 +5,8 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("UPLOAD_DIR", tempfile.mkdtemp(prefix="travelhub-uploads-"))
+# lifespan ходит в БД из настроек, а не в тестовую; сид проверяется в test_demo_users.py
+os.environ.setdefault("SEED_DEMO_USERS", "false")
 
 import pytest
 from alembic import command
