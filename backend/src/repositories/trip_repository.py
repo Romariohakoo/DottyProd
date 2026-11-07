@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import case, delete, func, or_, select
@@ -86,6 +87,22 @@ class TripRepository:
             .limit(1)
         )
         return event_id is not None
+
+    async def list_event_intervals(
+        self, trip_ids: list[int]
+    ) -> list[tuple[int, int, datetime, datetime | None]]:
+        if not trip_ids:
+            return []
+        stmt = (
+            select(EventModel.trip_id, EventModel.id, EventModel.start_at, EventModel.end_at)
+            .where(EventModel.trip_id.in_(trip_ids))
+            .order_by(EventModel.trip_id.asc(), EventModel.start_at.asc(), EventModel.id.asc())
+        )
+        result = await self.session.execute(stmt)
+        return [
+            (trip_id, event_id, start_at, end_at)
+            for trip_id, event_id, start_at, end_at in result.all()
+        ]
 
     async def list_events(self, trip_id: int) -> list[EventModel]:
         result = await self.session.scalars(

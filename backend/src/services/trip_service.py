@@ -33,12 +33,14 @@ from src.schemas.travel import (
     PlaceDTO,
     PlaceInput,
     PlaceRef,
+    ScheduleIssues,
     StoredFile,
     TripCard,
     TripDTO,
     TripDetail,
     TripInput,
 )
+from src.services.schedule_check import EventInterval, TripInterval, find_schedule_issues
 from src.storage.s3 import get_storage
 
 TRIP_NOT_FOUND = "Trip not found"
@@ -107,6 +109,20 @@ class TripService:
     async def list_trips(self, user: UserModel) -> list[TripCard]:
         rows = await self.trips.list_for_user(user.id)
         return [_trip_card(trip, role) for trip, role in rows]
+
+    async def schedule_issues(self, user: UserModel) -> ScheduleIssues:
+        rows = await self.trips.list_for_user(user.id)
+        trips = [
+            TripInterval(id=trip.id, start_date=trip.start_date, end_date=trip.end_date)
+            for trip, _role in rows
+        ]
+        intervals = await self.trips.list_event_intervals([trip.id for trip in trips])
+        events_by_trip: dict[int, list[EventInterval]] = {}
+        for trip_id, event_id, start_at, end_at in intervals:
+            events_by_trip.setdefault(trip_id, []).append(
+                EventInterval(id=event_id, start_at=start_at, end_at=end_at)
+            )
+        return find_schedule_issues(trips, events_by_trip)
 
     async def get_trip(self, access: TripAccess) -> TripDetail:
         places = await self.trips.list_places(access.trip.id)

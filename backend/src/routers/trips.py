@@ -2,7 +2,7 @@ from fastapi import APIRouter
 
 from src.core.dependencies import CurrentUser
 from src.routers.access import MemberTrip, OwnedTrip, TripServiceDep
-from src.schemas.travel import TripCard, TripDTO, TripDetail, TripInput
+from src.schemas.travel import ScheduleIssues, TripCard, TripDTO, TripDetail, TripInput
 
 router = APIRouter(prefix="/trips", tags=["trips"])
 
@@ -11,6 +11,12 @@ router = APIRouter(prefix="/trips", tags=["trips"])
 async def list_trips(user: CurrentUser, trips: TripServiceDep):
     """Доступные поездки, сортировка (start_date, id)."""
     return await trips.list_trips(user)
+
+
+@router.get("/schedule-issues", response_model=ScheduleIssues)
+async def schedule_issues(user: CurrentUser, trips: TripServiceDep):
+    """Пересечения доступных поездок и событий, пропуски в таймлайне длиннее 1,5 часа."""
+    return await trips.schedule_issues(user)
 
 
 @router.post("", status_code=201, response_model=TripDTO)

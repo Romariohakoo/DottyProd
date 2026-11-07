@@ -168,6 +168,33 @@ class TripDetail(BaseModel):
     timeline: list[EventDTO]
 
 
+class TripOverlap(BaseModel):
+    left_trip_id: int
+    right_trip_id: int
+
+
+class EventOverlap(BaseModel):
+    left_event_id: int
+    right_event_id: int
+
+
+class ScheduleGap(BaseModel):
+    after_event_id: int
+    before_event_id: int
+    gap_seconds: int
+
+
+class TripScheduleIssues(BaseModel):
+    trip_id: int
+    event_overlaps: list[EventOverlap]
+    gaps: list[ScheduleGap]
+
+
+class ScheduleIssues(BaseModel):
+    trip_overlaps: list[TripOverlap]
+    trips: list[TripScheduleIssues]
+
+
 @dataclass(frozen=True)
 class StoredFile:
     content: bytes
