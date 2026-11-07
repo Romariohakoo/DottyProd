@@ -2,6 +2,7 @@ services:
   frontend:
     image: ${FRONTEND_IMAGE_NAME}
     restart: unless-stopped
+    env_file: ./frontend.env
 
   backend:
     image: ${BACKEND_IMAGE_NAME}

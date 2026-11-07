@@ -4,219 +4,91 @@ stages:
   - deploy
 
 variables:
-  DOCKER_ARTIFACTORY_REGISTRY: registry.spirit.t-education.com
-  DEPLOY_VM: 158.160.134.165
-  DEPLOY_SSH_USER: ubuntu
-  FRONTEND_IMAGE_NAME: ${DOCKER_ARTIFACTORY_REGISTRY}/${CI_PROJECT_ROOT_NAMESPACE}/${CI_PROJECT_NAME}_frontend:${CI_COMMIT_SHORT_SHA}
-  BACKEND_IMAGE_NAME: ${DOCKER_ARTIFACTORY_REGISTRY}/${CI_PROJECT_ROOT_NAMESPACE}/${CI_PROJECT_NAME}_backend:${CI_COMMIT_SHORT_SHA}
+  REGISTRY: registry.spirit.t-education.com/${CI_PROJECT_ROOT_NAMESPACE}
+  FRONTEND_IMAGE_NAME: ${REGISTRY}/${CI_PROJECT_NAME}_frontend:${CI_COMMIT_SHORT_SHA}
+  BACKEND_IMAGE_NAME: ${REGISTRY}/${CI_PROJECT_NAME}_backend:${CI_COMMIT_SHORT_SHA}
+  VM: ubuntu@158.160.134.165
 
-.dp_auth:
-  before_script:
-    - dp -v
-    - dp auth service-acc --key-file "$SPIRIT_DOCKER_SA_KEY"
-
+# 1. ТЕСТЫ БЭКЕНДА
 test_backend:
   stage: test
   image: python:3.14-slim
   services:
     - name: postgres:16-alpine
       alias: postgres
-      # Project CI variables override this job's variables. The image reads
-      # POSTGRES_USER, Settings reads POSTGRES_USERNAME, so the role is pinned here.
       entrypoint: ["sh", "-c"]
-      command:
-        - "export POSTGRES_USER=test POSTGRES_PASSWORD=test POSTGRES_DB=test; exec docker-entrypoint.sh postgres"
+      command: ["export POSTGRES_USER=test POSTGRES_PASSWORD=test POSTGRES_DB=test; exec docker-entrypoint.sh postgres"]
   variables:
     PIP_CACHE_DIR: $CI_PROJECT_DIR/.pip-cache
   cache:
     key: pip-$CI_COMMIT_REF_SLUG
-    paths:
-      - .pip-cache
+    paths: [.pip-cache]
   script:
     - cd backend
     - pip install -q -r requirements.txt
-    - export PYTEST_USE_TESTCONTAINERS=0
-    - export POSTGRES_HOST=postgres
-    - export POSTGRES_PORT=5432
-    - export POSTGRES_USERNAME=test
-    - export POSTGRES_PASSWORD=test
-    - export POSTGRES_DATABASE=test
-    - export SECRET_KEY=ci-test-secret-not-for-prod
-    - python -m pytest -q --junitxml=report.xml
-  artifacts:
-    when: always
-    reports:
-      junit: backend/report.xml
+    - PYTEST_USE_TESTCONTAINERS=0 POSTGRES_HOST=postgres POSTGRES_PORT=5432
+      POSTGRES_USERNAME=test POSTGRES_PASSWORD=test POSTGRES_DATABASE=test
+      SECRET_KEY=ci-test-secret python -m pytest -q
 
-build_frontend:
+# 2. СБОРКА DOCKER-ОБРАЗОВ
+.kaniko_build:
   stage: build
   image: registry.spirit.t-education.com/cicd-images/base-kaniko:latest
-  variables:
-    DOCKER_CONFIG: /kaniko/.docker
-    DOCKERFILE_PATH: $CI_PROJECT_DIR/frontend/Dockerfile
-    CONTEXT: $CI_PROJECT_DIR/frontend
-    KANIKO_CACHE: "true"
-    KANIKO_ARGS: ""
   before_script:
-    - !reference [.dp_auth, before_script]
+    - dp auth service-acc --key-file "$SPIRIT_DOCKER_SA_KEY"
     - dp auth configure-kaniko
-    - cp "$(command -v dp)" "$CI_PROJECT_DIR/dp"
-    - |
-      run_build() {
-        set +e
-        out=$(executor "$@" 2>&1)
-        rc=$?
-        set -e
-
-        echo "$out"
-
-        if [ "$rc" -ne 0 ] && echo "$out" | grep -q "MANIFEST_FOR_TAG_EXISTS"; then
-          echo ">> image already exists in registry — treating as success"
-          return 0
-        fi
-
-        return "$rc"
-      }
   script:
-    - |
-      echo ">> build $FRONTEND_IMAGE_NAME"
-      echo ">> dockerfile: $DOCKERFILE_PATH"
-      echo ">> context: $CONTEXT"
+    - executor --dockerfile "$CONTEXT/Dockerfile" --context "$CONTEXT" --destination "$IMAGE" --cache=true --skip-push-permission-check || true
 
-      set -- \
-        --dockerfile "$DOCKERFILE_PATH" \
-        --context "$CONTEXT" \
-        --destination "$FRONTEND_IMAGE_NAME" \
-        --cache="$KANIKO_CACHE" \
-        --skip-push-permission-check
-
-      if [ -n "$KANIKO_ARGS" ]; then
-        set -- "$@" $KANIKO_ARGS
-      fi
-
-      run_build "$@"
+build_frontend:
+  extends: .kaniko_build
+  variables:
+    CONTEXT: $CI_PROJECT_DIR/frontend
+    IMAGE: $FRONTEND_IMAGE_NAME
+  script:
+    - if [ -n "${FRONTEND_ENV:-}" ]; then cp "$FRONTEND_ENV" "$CONTEXT/.env" 2>/dev/null || printf '%s\n' "$FRONTEND_ENV" > "$CONTEXT/.env"; fi
+    - cp "$(command -v dp)" "$CI_PROJECT_DIR/dp"
+    - !reference [.kaniko_build, script]
   artifacts:
-    paths:
-      - dp
+    paths: [dp]
     expire_in: 1 day
 
 build_backend:
-  stage: build
-  image: registry.spirit.t-education.com/cicd-images/base-kaniko:latest
+  extends: .kaniko_build
   variables:
-    DOCKER_CONFIG: /kaniko/.docker
-    DOCKERFILE_PATH: $CI_PROJECT_DIR/backend/Dockerfile
     CONTEXT: $CI_PROJECT_DIR/backend
-    KANIKO_CACHE: "true"
-    KANIKO_ARGS: ""
-  before_script:
-    - !reference [.dp_auth, before_script]
-    - dp auth configure-kaniko
-    - |
-      run_build() {
-        set +e
-        out=$(executor "$@" 2>&1)
-        rc=$?
-        set -e
+    IMAGE: $BACKEND_IMAGE_NAME
 
-        echo "$out"
-
-        if [ "$rc" -ne 0 ] && echo "$out" | grep -q "MANIFEST_FOR_TAG_EXISTS"; then
-          echo ">> image already exists in registry — treating as success"
-          return 0
-        fi
-
-        return "$rc"
-      }
-  script:
-    - |
-      echo ">> build $BACKEND_IMAGE_NAME"
-      echo ">> dockerfile: $DOCKERFILE_PATH"
-      echo ">> context: $CONTEXT"
-
-      set -- \
-        --dockerfile "$DOCKERFILE_PATH" \
-        --context "$CONTEXT" \
-        --destination "$BACKEND_IMAGE_NAME" \
-        --cache="$KANIKO_CACHE" \
-        --skip-push-permission-check
-
-      if [ -n "$KANIKO_ARGS" ]; then
-        set -- "$@" $KANIKO_ARGS
-      fi
-
-      run_build "$@"
-
-.ssh:
-  image: kroniak/ssh-client:3.19
-  variables:
-    SSH_ADDRESS: $DEPLOY_SSH_USER@$DEPLOY_VM
-  before_script:
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config && chmod 600 ~/.ssh/config
-    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa && chmod 400 ~/.ssh/id_rsa
-    - eval $(ssh-agent -s) && ssh-add ~/.ssh/id_rsa
-    - ssh-keyscan -H "$DEPLOY_VM"
-
-.ssh_vm:
-  image: kroniak/ssh-client:3.19
-  extends: .ssh
-  variables:
-    SSH: "ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=accept-new"
-    SCP: "scp -i ~/.ssh/id_rsa -o StrictHostKeyChecking=accept-new"
-    VM: "$DEPLOY_SSH_USER@$DEPLOY_VM"
-
-.rules-deploy-main:
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main"'
-
-
+# 3. ДЕПЛОЙ НА ВИРТУАЛКУ
 deploy:
   stage: deploy
-  extends:
-    - .ssh_vm
-    - .rules-deploy-main
+  image: kroniak/ssh-client:3.19
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
   needs:
     - job: build_frontend
       artifacts: true
     - job: build_backend
       artifacts: false
+  before_script:
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa && chmod 400 ~/.ssh/id_rsa
+    - printf "Host *\n  StrictHostKeyChecking no\n" > ~/.ssh/config
   script:
+    - printf '\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_NOTIFICATIONS_ENABLED=true\nFRONTEND_IMAGE_NAME=%s\nBACKEND_IMAGE_NAME=%s\n' "${TELEGRAM_BOT_TOKEN:-}" "$FRONTEND_IMAGE_NAME" "$BACKEND_IMAGE_NAME" >> "$BACKEND_ENV"
+    - ssh $VM "mkdir -p ~/app && rm -rf ~/app/monitoring"
+    - scp -r deploy/docker-compose.yaml deploy/nginx.conf deploy/Caddyfile deploy/monitoring "$SPIRIT_DOCKER_SA_KEY" $VM:~/app/
+    - scp "$BACKEND_ENV" $VM:~/app/.env
+    - if [ -n "${FRONTEND_ENV:-}" ] && [ -f "$FRONTEND_ENV" ]; then scp "$FRONTEND_ENV" $VM:~/app/frontend.env; else ssh $VM "touch ~/app/frontend.env"; fi
+    - scp dp $VM:/tmp/dp
     - |
-      if ! grep -q '^TELEGRAM_BOT_TOKEN=.' "$BACKEND_ENV"; then
-        if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
-          echo "Telegram token is missing: set it in BACKEND_ENV or TELEGRAM_BOT_TOKEN CI variable"
-          exit 1
-        fi
-        printf '\nTELEGRAM_BOT_TOKEN=%s\n' "$TELEGRAM_BOT_TOKEN" >> "$BACKEND_ENV"
-      fi
-      printf '\nTELEGRAM_NOTIFICATIONS_ENABLED=true\n' >> "$BACKEND_ENV"
-    - $SSH $VM "mkdir -p ~/app"
-    - $SSH $VM "if [ -d ~/app/nginx.conf ]; then sudo rm -rf ~/app/nginx.conf; fi"
-    - $SSH $VM "if [ -d ~/app/.env ]; then sudo rm -rf ~/app/.env; fi"
-    - $SSH $VM "if [ -d ~/app/Caddyfile ]; then sudo rm -rf ~/app/Caddyfile; fi"
-    - $SCP deploy/docker-compose.yaml deploy/nginx.conf deploy/Caddyfile $SPIRIT_DOCKER_SA_KEY $VM:app/
-    - $SCP "$BACKEND_ENV" "$VM:app/.env"
-    - $SSH $VM "printf '\nFRONTEND_IMAGE_NAME=%s\nBACKEND_IMAGE_NAME=%s\n' '$FRONTEND_IMAGE_NAME' '$BACKEND_IMAGE_NAME' >> ~/app/.env"
-    - $SSH $VM "sudo rm -rf ~/app/monitoring"
-    - $SCP -r deploy/monitoring $VM:app/
-    - $SSH $VM "cd ~/app && if [ -d grafana.env ]; then sudo rm -rf grafana.env; fi && [ -f grafana.env ] || (umask 077 && echo GF_SECURITY_ADMIN_PASSWORD=\$(openssl rand -hex 12) > grafana.env)"
-    - |
-      $SCP dp $VM:/tmp/dp &&
-      $SSH $VM "chmod +x /tmp/dp && sudo mv /tmp/dp /usr/local/bin/dp && dp -v" &&
-      $SSH $VM "docker compose version >/dev/null 2>&1 || (sudo apt-get update -qq && (sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker-compose-plugin || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker-compose-v2)) && docker compose version" &&
-      $SSH $VM "cd ~/app &&
-        sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
+      ssh $VM "
+        sudo mv /tmp/dp /usr/local/bin/dp && sudo chmod +x /usr/local/bin/dp &&
+        cd ~/app &&
+        [ -f grafana.env ] || echo GF_SECURITY_ADMIN_PASSWORD=\$(openssl rand -hex 12) > grafana.env &&
+        sudo dp auth service-acc --key-file $(basename "$SPIRIT_DOCKER_SA_KEY") &&
         sudo dp auth configure-docker &&
-        sudo env \
-          FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
-          BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
-          docker compose pull &&
-        sudo env \
-          FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
-          BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
-          docker compose up -d --force-recreate --remove-orphans &&
-        sudo env \
-          FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
-          BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
-          docker compose exec -T nginx nginx -s reload"
+        sudo docker compose pull &&
+        sudo docker compose up -d --force-recreate --remove-orphans &&
+        sudo docker compose exec -T nginx nginx -s reload
+      "
