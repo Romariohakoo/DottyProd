@@ -1,7 +1,7 @@
 import axios, { AxiosError } from "axios";
 
 import { API_BASE_URL } from "../config/env";
-import { convertKeys, snakeToCamel } from "../lib/case-converter";
+import { camelToSnake, convertKeys, snakeToCamel } from "../lib/case-converter";
 
 export const UNKNOWN_ERROR = "UNKNOWN_ERROR";
 
@@ -77,9 +77,10 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
+  config.data = convertKeys(config.data, camelToSnake);
   const accessToken = getAccessToken();
   if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
+    // config.headers.Authorization = `Bearer ${accessToken}`;
   }
   return config;
 });

@@ -55,7 +55,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        className="max-h-[calc(100dvh-1.5rem)] w-fit min-w-0 max-w-[calc(100dvw-2.25rem)] overflow-x-auto overflow-y-auto overscroll-contain rounded-xl border border-muted/60 bg-muted/15 text-foreground shadow-2xl sm:max-h-[calc(100dvh-2.5rem)] sm:max-w-[calc(100dvw-3.25rem)]"
+        className="max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-3xl overflow-y-auto overscroll-contain rounded-xl border border-muted/60 bg-background text-foreground shadow-2xl sm:max-h-[calc(100dvh-2.5rem)]"
       >
         {children}
       </div>

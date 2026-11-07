@@ -1,0 +1,1 @@
+export { UpdatePlaceForm } from "./UpdatePlaceForm";
