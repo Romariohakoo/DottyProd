@@ -1,4 +1,25 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+class UserRegister(BaseModel):
+    username: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+
+    @field_validator("password")
+    @classmethod
+    def password_fits_limits(cls, password: str) -> str:
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("password must be at most 72 bytes (UTF-8)")
+        if len(password) > 32:
+            raise ValueError("password must be at most 32 characters")
+
+        return password
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
 
 
 class UserResponse(BaseModel):
@@ -6,9 +27,4 @@ class UserResponse(BaseModel):
 
     id: int
     username: str
-
-
-class UserUpdate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
-
-    name: str = Field(min_length=1, max_length=100)
+    email: EmailStr

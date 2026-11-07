@@ -125,25 +125,6 @@ class PlaceDTO(FromORM):
     longitude: float
 
 
-CommentBody = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
-
-
-class CommentInput(Strict):
-    body: CommentBody
-
-
-class CommentAuthorDTO(FromORM):
-    id: int
-    username: str
-
-
-class CommentDTO(FromORM):
-    id: int
-    body: str
-    created_at: datetime
-    author: CommentAuthorDTO
-
-
 class AttachmentDTO(FromORM):
     id: int
     file_name: str

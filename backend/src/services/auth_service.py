@@ -8,13 +8,16 @@ from src.core.dependencies import credentials_error
 from src.core.security import (
     InvalidToken,
     IssuedToken,
+    hash_password,
     issue_access_token,
     issue_refresh_token,
     read_token,
+    verify_password,
 )
 from src.models.user_model import UserModel
 from src.repositories.auth_session_repository import AuthSessionRepository
 from src.repositories.user_repository import UserRepository
+from src.schemas.auth import UserLogin, UserRegister
 
 
 @dataclass(frozen=True)
@@ -28,10 +31,33 @@ class AuthService:
         self.users = UserRepository(session)
         self.auth_sessions = AuthSessionRepository(session)
 
-    async def login_telegram(self, claims: dict) -> tuple[UserModel, TokenPair]:
-        user = await self.users.get_or_create_telegram(claims)
-        if user is None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Telegram identity conflict")
+    async def register(self, data: UserRegister) -> UserModel:
+        if await self.users.get_by_email(data.email) is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
+        if await self.users.get_by_username(data.username) is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Username already taken")
+
+        return await self.users.create(data.username, data.email, hash_password(data.password))
+
+    async def login(self, data: UserLogin) -> tuple[UserModel, TokenPair]:
+        user = await self.users.get_by_email(data.email)
+        if user is None or not user.hashed_password or not verify_password(data.password, user.hashed_password):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
+
+        session_id = str(uuid4())
+        tokens = _issue_pair(user.id, session_id)
+        await self.auth_sessions.create(session_id, user.id, tokens.refresh.jti, tokens.refresh.expires_at)
+
+        return user, tokens
+
+    async def login_telegram(
+        self,
+        telegram_id: int,
+        username: str | None = None,
+        name: str | None = None,
+        avatar_url: str | None = None,
+    ) -> tuple[UserModel, TokenPair]:
+        user = await self.users.get_or_create_by_telegram(telegram_id, username, name, avatar_url)
 
         session_id = str(uuid4())
         tokens = _issue_pair(user.id, session_id)

@@ -1,3 +1,10 @@
+export interface LoginDto {
+  email: string;
+  password: string;
+}
+
 export interface LoginResDto {
-  authorizationUrl: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
 }

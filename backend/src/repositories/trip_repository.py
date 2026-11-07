@@ -6,14 +6,7 @@ from sqlalchemy import and_, case, delete, func, or_, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.models.trip_model import (
-    AttachmentModel,
-    EventCommentModel,
-    EventModel,
-    PlaceModel,
-    TripMemberModel,
-    TripModel,
-)
+from src.models.trip_model import AttachmentModel, EventModel, PlaceModel, TripMemberModel, TripModel
 
 _EVENT_LOADS = (
     selectinload(EventModel.place),
@@ -182,22 +175,6 @@ class TripRepository:
             for trip_id, event_id, start_at, end_at in result.all()
         ]
 
-    async def list_event_intervals(
-        self, trip_ids: list[int]
-    ) -> list[tuple[int, int, datetime, datetime | None]]:
-        if not trip_ids:
-            return []
-        stmt = (
-            select(EventModel.trip_id, EventModel.id, EventModel.start_at, EventModel.end_at)
-            .where(EventModel.trip_id.in_(trip_ids))
-            .order_by(EventModel.trip_id.asc(), EventModel.start_at.asc(), EventModel.id.asc())
-        )
-        result = await self.session.execute(stmt)
-        return [
-            (trip_id, event_id, start_at, end_at)
-            for trip_id, event_id, start_at, end_at in result.all()
-        ]
-
     async def list_events(self, trip_id: int) -> list[EventModel]:
         result = await self.session.scalars(
             select(EventModel)
@@ -219,22 +196,6 @@ class TripRepository:
             select(EventModel)
             .where(EventModel.trip_id == trip_id, EventModel.client_request_id == request_id)
             .options(*_EVENT_LOADS)
-        )
-
-    async def list_comments(self, event_id: int) -> list[EventCommentModel]:
-        result = await self.session.scalars(
-            select(EventCommentModel)
-            .where(EventCommentModel.event_id == event_id)
-            .options(selectinload(EventCommentModel.author))
-            .order_by(EventCommentModel.created_at, EventCommentModel.id)
-        )
-        return list(result)
-
-    async def get_comment(self, event_id: int, comment_id: int) -> EventCommentModel | None:
-        return await self.session.scalar(
-            select(EventCommentModel)
-            .where(EventCommentModel.event_id == event_id, EventCommentModel.id == comment_id)
-            .options(selectinload(EventCommentModel.author))
         )
 
     async def count_attachments(self, event_id: int) -> int:

@@ -1,43 +1,23 @@
-import pytest
-from urllib.parse import parse_qs, urlparse
-
-from src.core.config import settings
-from src.services import telegram_auth_service as telegram
-
+REGISTER_URL = "/api/auth/register"
+LOGIN_URL = "/api/auth/login"
 ME_URL = "/api/auth/me"
 REFRESH_URL = "/api/auth/refresh"
 LOGOUT_URL = "/api/auth/logout"
-USER = {"username": "alice"}
+
+USER = {
+    "username": "alice",
+    "email": "alice@example.com",
+    "password": "secret123",
+}
 
 
-@pytest.fixture(autouse=True)
-def telegram_provider(monkeypatch):
-    from pydantic import SecretStr
-    monkeypatch.setattr(settings, "telegram_client_id", "12345")
-    monkeypatch.setattr(settings, "telegram_client_secret", SecretStr("test-client-secret"))
-    async def exchange(code, attempt):
-        if code == "invalid":
-            from fastapi import HTTPException
-            raise HTTPException(401, "Invalid code")
-        return {"sub": "subject-" + code, "id": int(code), "preferred_username": "alice"}
-    monkeypatch.setattr(telegram, "exchange_code", exchange)
+def _register(client, **overrides):
+    payload = {**USER, **overrides}
+    return client.post(REGISTER_URL, json=payload)
 
 
-def _start(client):
-    response = client.post("/api/auth/telegram/start")
-    assert response.status_code == 200
-    return parse_qs(urlparse(response.json()["authorization_url"]).query)
-
-
-def _login(client, code="101"):
-    query = _start(client)
-    return client.get("/api/auth/telegram/callback", params={"state": query["state"][0], "code": code}, follow_redirects=False)
-
-
-def _login_tokens(client):
-    response = _login(client)
-    assert response.status_code == 303
-    return {key: response.cookies[key] for key in ("access_token", "refresh_token")}
+def _login(client, email=USER["email"], password=USER["password"]):
+    return client.post(LOGIN_URL, json={"email": email, "password": password})
 
 
 def _cookies(**values):
@@ -54,7 +34,107 @@ def _set_cookie_headers(response):
     return response.headers.get_list("set-cookie")
 
 
+def _login_tokens(client):
+    """Логин и токены из Set-Cookie (как их увидел бы браузер)."""
+    response = _login(client)
+    assert response.status_code == 200
+    return {
+        "access_token": response.cookies["access_token"],
+        "refresh_token": response.cookies["refresh_token"],
+    }
+
+
+# ─────────────────────────── регистрация: happy path ───────────────────────────
+
+def test_register_success(client):
+    response = _register(client)
+    assert response.status_code == 201
+    body = response.json()
+    assert body["username"] == USER["username"]
+    assert body["email"] == USER["email"]
+    assert "id" in body
+    assert "hashed_password" not in body
+    assert "password" not in body
+
+
+# ─────────────────────────── регистрация: дубликаты (409) ──────────────────────
+
+def test_register_duplicate_email(client):
+    assert _register(client).status_code == 201
+    response = _register(client, username="bob")
+    assert response.status_code == 409
+    assert response.json()["reason"] == "Email already registered"
+
+
+def test_register_duplicate_username(client):
+    assert _register(client).status_code == 201
+    response = _register(client, email="bob@example.com")
+    assert response.status_code == 409
+    assert response.json()["reason"] == "Username already taken"
+
+
+# ─────────────────────────── логин ─────────────────────────────────────────────
+
+def test_login_sets_httponly_cookies_and_hides_tokens(client):
+    assert _register(client).status_code == 201
+    response = _login(client)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["email"] == USER["email"]
+    assert "access_token" not in body
+    assert "refresh_token" not in body
+
+    set_cookies = _set_cookie_headers(response)
+    access = next(c for c in set_cookies if c.startswith("access_token="))
+    refresh = next(c for c in set_cookies if c.startswith("refresh_token="))
+    for cookie in (access, refresh):
+        assert "HttpOnly" in cookie
+        assert "SameSite=lax" in cookie
+    assert "Path=/;" in access or access.endswith("Path=/")
+    assert "Path=/api/auth" in refresh
+
+
+def test_login_cookies_with_samesite_none(client, monkeypatch):
+    """Фронт на localhost → задеплоенный backend: нужен SameSite=None; Secure."""
+    from src.core.config import settings
+
+    monkeypatch.setattr(settings, "cookie_samesite", "none")
+    monkeypatch.setattr(settings, "cookie_secure", True)
+    assert _register(client).status_code == 201
+
+    response = _login(client)
+
+    assert response.status_code == 200
+    auth_cookies = [
+        c for c in _set_cookie_headers(response)
+        if c.startswith(("access_token=", "refresh_token="))
+    ]
+    assert len(auth_cookies) == 2
+    for cookie in auth_cookies:
+        assert "SameSite=none" in cookie
+        assert "Secure" in cookie
+        assert "HttpOnly" in cookie
+
+
+def test_login_wrong_password(client):
+    assert _register(client).status_code == 201
+    response = _login(client, password="wrong")
+    assert response.status_code == 401
+    assert response.json()["reason"] == "Incorrect email or password"
+    assert not _set_cookie_headers(response)
+
+
+def test_login_unknown_email(client):
+    response = _login(client)
+    assert response.status_code == 401
+    assert response.json()["reason"] == "Incorrect email or password"
+
+
+# ─────────────────────────── refresh ───────────────────────────────────────────
+
 def test_refresh_rotates_refresh_token(client):
+    assert _register(client).status_code == 201
     tokens = _login_tokens(client)
 
     response = _refresh(client, tokens["refresh_token"])
@@ -68,7 +148,8 @@ def test_refresh_rotates_refresh_token(client):
 
 def test_refresh_uses_cookie_jar(client):
     """Как браузер: refresh без тела, кука уходит сама."""
-    assert _login(client).status_code == 303
+    assert _register(client).status_code == 201
+    assert _login(client).status_code == 200
 
     assert client.post(REFRESH_URL).status_code == 204
     assert client.get(ME_URL).status_code == 200
@@ -80,29 +161,47 @@ def test_refresh_without_cookie(client):
 
 
 def test_refresh_rejects_access_token(client):
+    assert _register(client).status_code == 201
     tokens = _login_tokens(client)
 
     assert _refresh(client, tokens["access_token"]).status_code == 401
 
 
+# ─────────────────────────── /me ───────────────────────────────────────────────
+
 def test_me_with_cookie(client):
-    assert _login(client).status_code == 303
+    assert _register(client).status_code == 201
+    assert _login(client).status_code == 200
 
     response = client.get(ME_URL)
 
     assert response.status_code == 200
     body = response.json()
     assert body["username"] == USER["username"]
-    assert "email" not in body
+    assert body["email"] == USER["email"]
 
 
 def test_me_with_bearer_header(client):
     """Bearer оставлен для Swagger/curl."""
+    assert _register(client).status_code == 201
     token = _login_tokens(client)["access_token"]
     client.cookies.clear()
 
     response = client.get(ME_URL, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
+
+
+def test_bearer_overrides_browser_cookie(client):
+    """Swagger Authorize должен побеждать куку, оставшуюся после входа на сайт."""
+    assert _register(client).status_code == 201
+    alice = _login_tokens(client)["access_token"]
+    assert _register(client, username="bob", email="bob@example.com").status_code == 201
+    assert _login(client, email="bob@example.com").status_code == 200
+
+    response = client.get(ME_URL, headers={"Authorization": f"Bearer {alice}"})
+
+    assert response.status_code == 200
+    assert response.json()["email"] == USER["email"]
 
 
 def test_me_without_token(client):
@@ -122,13 +221,17 @@ def test_me_with_invalid_cookie(client):
 
 
 def test_me_rejects_refresh_token_as_access(client):
+    assert _register(client).status_code == 201
     tokens = _login_tokens(client)
 
     response = client.get(ME_URL, headers=_cookies(access_token=tokens["refresh_token"]))
     assert response.status_code == 401
 
 
+# ─────────────────────────── logout ────────────────────────────────────────────
+
 def test_logout_revokes_tokens_and_clears_cookies(client):
+    assert _register(client).status_code == 201
     tokens = _login_tokens(client)
 
     response = client.post(LOGOUT_URL)
@@ -146,6 +249,7 @@ def test_logout_revokes_tokens_and_clears_cookies(client):
 
 
 def test_logout_with_expired_access_revokes_by_refresh_cookie(client):
+    assert _register(client).status_code == 201
     tokens = _login_tokens(client)
 
     response = client.post(
@@ -163,6 +267,7 @@ def test_logout_without_cookies_is_noop(client):
 
 
 def test_logout_does_not_revoke_another_login_session(client):
+    assert _register(client).status_code == 201
     first_tokens = _login_tokens(client)
     second_tokens = _login_tokens(client)
 
@@ -176,6 +281,8 @@ def test_logout_does_not_revoke_another_login_session(client):
         == 200
     )
 
+
+# ─────────────────────────── CORS ──────────────────────────────────────────────
 
 def test_cors_preflight_allows_frontend_origin_with_credentials(client):
     response = client.options(
@@ -201,124 +308,51 @@ def test_cors_rejects_unknown_origin(client):
     assert "access-control-allow-origin" not in response.headers
 
 
-def test_password_endpoints_removed(client):
-    for endpoint in ("login", "register"):
-        assert client.post(f"/api/auth/{endpoint}", json={"email": "a@b.c", "password": "secret"}).status_code == 404
+# ─────────────────────────── валидация пароля (422) ────────────────────────────
+
+def test_register_short_password(client):
+    response = _register(client, password="abc")
+    assert response.status_code == 422
+    body = response.json()
+    assert body["reason"] == "Validation failed"
+    assert "password" in str(body["errors"]).lower()
 
 
-def test_start_has_pkce_scope_and_secure_binding(client):
-    query = _start(client)
-    assert query["code_challenge_method"] == ["S256"]
-    assert query["scope"] == ["openid profile telegram:bot_access"]
-    assert query["nonce"] and query["state"] and query["code_challenge"]
-    assert "client_secret" not in query
-    assert client.cookies.get("telegram_login")
+def test_register_empty_password(client):
+    assert _register(client, password="").status_code == 422
 
 
-def test_login_creates_account_and_preserves_display_name(client):
-    response = _login(client)
-    assert response.status_code == 303
-    assert response.headers["location"] == settings.frontend_url + "/"
-    assert "HttpOnly" in response.headers.get_list("set-cookie")[0]
-    user = client.get(ME_URL).json()
-    assert user == {"id": user["id"], "username": "alice"}
-    assert client.patch(ME_URL, json={"name": "  Новое имя  "}).json()["username"] == "Новое имя"
-    _login(client)
-    assert client.get(ME_URL).json() == {**user, "username": "Новое имя"}
+def test_register_password_exactly_8_chars(client):
+    assert _register(client, password="12345678").status_code == 201
 
 
-def test_display_names_are_not_unique(client):
-    _login(client, "101")
-    first = client.get(ME_URL).json()
-    _login(client, "102")
-    second = client.get(ME_URL).json()
-    assert first["id"] != second["id"]
-    assert first["username"] == second["username"]
+def test_register_password_73_ascii_chars(client):
+    """73 ASCII-байта — min_length пройден, ловит байтовый валидатор.
+
+    Подстрока "byte" есть только в сообщении кастомного
+    field_validator'а, но не в min_length. Значит, тест доказывает,
+    что сработал именно password_bytes_ok, а не что-то другое.
+    """
+    response = _register(client, password="a" * 73)
+    assert response.status_code == 422
+    body = response.json()
+    assert body["reason"] == "Validation failed"
+    assert "byte" in str(body["errors"]).lower()
 
 
-def test_callback_requires_original_browser_and_is_one_use(client):
-    query = _start(client)
-    cookie = client.cookies.get("telegram_login")
-    params = {"state": query["state"][0], "code": "101"}
-    client.cookies.clear()
-    bad = client.get("/api/auth/telegram/callback", params=params, follow_redirects=False)
-    assert "telegram_error" in bad.headers["location"]
-    assert client.get(ME_URL).status_code == 401
-    headers = {"Cookie": f"telegram_login={cookie}"}
-    good = client.get("/api/auth/telegram/callback", params=params, headers=headers, follow_redirects=False)
-    assert "telegram_error" not in good.headers["location"]
-    replay = client.get("/api/auth/telegram/callback", params=params, headers=headers, follow_redirects=False)
-    assert "telegram_error" in replay.headers["location"]
-    assert "access_token" not in replay.cookies
+def test_register_password_multibyte_too_long(client):
+    """30 emoji = 30 символов (min_length OK), но 120 байт (> 72).
+
+    Аналогично: "byte" в сообщении доказывает, что упал именно
+    байтовый валидатор, а не min_length.
+    """
+    response = _register(client, password="😀" * 30)
+    assert response.status_code == 422
+    body = response.json()
+    assert body["reason"] == "Validation failed"
+    assert "byte" in str(body["errors"]).lower()
 
 
-@pytest.mark.parametrize("params", [{"error": "access_denied"}, {"code": "invalid"}, {}])
-def test_failed_callback_never_creates_session(client, params):
-    query = _start(client)
-    response = client.get("/api/auth/telegram/callback", params={"state": query["state"][0], **params}, follow_redirects=False)
-    assert "telegram_error" in response.headers["location"]
-    assert "access_token" not in response.cookies
-    assert client.get(ME_URL).status_code == 401
-
-
-def test_expired_attempt_rejected(client, db_session):
-    from datetime import datetime, timedelta, timezone
-    from sqlalchemy import update
-    from src.models.telegram_login_model import TelegramLoginModel
-    query = _start(client)
-    db_session(lambda session: session.execute(update(TelegramLoginModel).values(expires_at=datetime.now(timezone.utc)-timedelta(seconds=1))))
-    response = client.get("/api/auth/telegram/callback", params={"state": query["state"][0], "code": "101"}, follow_redirects=False)
-    assert "telegram_error" in response.headers["location"]
-
-
-def test_unconfigured_login_is_unavailable(client, monkeypatch):
-    monkeypatch.setattr(settings, "telegram_client_id", "")
-    response = client.post("/api/auth/telegram/start")
-    assert response.status_code == 503
-    assert not response.cookies
-
-
-def test_profile_requires_auth_and_nonempty_name(client):
-    assert client.patch(ME_URL, json={"name": "alice"}).status_code == 401
-    _login(client)
-    assert client.patch(ME_URL, json={"name": "   "}).status_code == 422
-
-
-def test_parallel_registrations_share_one_account(client):
-    import asyncio
-    from src.main import app
-    from src.repositories.user_repository import UserRepository
-
-    async def register_twice():
-        async def register():
-            async with app.state.test_session_factory() as session:
-                user = await UserRepository(session).get_or_create_telegram({
-                    "sub": "concurrent-subject", "id": 999, "name": "Без username",
-                })
-                return user.id
-        return await asyncio.gather(register(), register())
-
-    ids = asyncio.run(register_twice())
-    assert ids[0] == ids[1]
-
-
-def test_callback_rejects_wrong_state(client):
-    _start(client)
-    response = client.get("/api/auth/telegram/callback", params={"state": "wrong", "code": "101"}, follow_redirects=False)
-    assert "telegram_error" in response.headers["location"]
-    assert client.get(ME_URL).status_code == 401
-
-
-def test_identity_conflicts_never_merge_accounts(client):
-    import asyncio
-    from src.main import app
-    from src.repositories.user_repository import UserRepository
-
-    async def check():
-        async with app.state.test_session_factory() as session:
-            users = UserRepository(session)
-            first = await users.get_or_create_telegram({"sub": "first", "id": 777, "name": "Alice"})
-            assert first is not None
-            assert await users.get_or_create_telegram({"sub": "different", "id": 777}) is None
-            assert await users.get_or_create_telegram({"sub": "first", "id": 888}) is None
-    asyncio.run(check())
+def test_register_password_multibyte_ok(client):
+    response = _register(client, password="😀" * 15)
+    assert response.status_code == 201

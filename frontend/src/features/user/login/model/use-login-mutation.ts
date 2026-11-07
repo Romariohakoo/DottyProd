@@ -1,17 +1,24 @@
 "use client";
 
-import { useMutation } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 
-import { clearAccessToken } from "@shared/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { userQueryKeys } from "@entities/user";
 
 import { login } from "../api/login";
 
 export function useLoginMutation() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: login,
-    onSuccess: ({ authorizationUrl }) => {
-      clearAccessToken();
-      window.location.assign(authorizationUrl);
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: userQueryKeys.me,
+      });
+      router.replace("/");
     },
   });
 }

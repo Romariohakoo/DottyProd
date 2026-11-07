@@ -37,12 +37,17 @@ let refreshPromise: Promise<boolean> | null = null;
 async function refreshAccessToken(): Promise<boolean> {
   refreshPromise ??= (async () => {
     try {
-      await axios.post(`${API_BASE_URL}${API_PREFIX}/auth/refresh`, undefined, {
-        withCredentials: true,
-        headers: {
-          "Content-Type": "application/json",
+      const response = await axios.post<{ access_token: string }>(
+        `${API_BASE_URL}${API_PREFIX}/auth/refresh`,
+        undefined,
+        {
+          withCredentials: true,
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      });
+      );
+      setAccessToken(response.data.access_token);
       return true;
     } catch {
       clearAccessToken();
@@ -80,7 +85,12 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-const AUTH_ENDPOINTS = ["/auth/telegram/", "/auth/refresh", "/auth/logout"];
+const AUTH_ENDPOINTS = [
+  "/auth/login",
+  "/auth/register",
+  "/auth/refresh",
+  "/auth/logout",
+];
 
 api.interceptors.response.use(
   (response) => {

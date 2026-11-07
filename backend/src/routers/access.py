@@ -34,13 +34,6 @@ EditableTrip = Annotated[TripAccess, Depends(_trip_with_role(EDITORS))]
 OwnedTrip = Annotated[TripAccess, Depends(_trip_with_role(OWNER))]
 
 
-async def _member_event(event_id: int, access: MemberTrip, trips: TripServiceDep) -> EventModel:
-    return await trips.require_event(access.trip.id, event_id)
-
-
-MemberEvent = Annotated[EventModel, Depends(_member_event)]
-
-
 async def _editable_event(event_id: int, access: EditableTrip, trips: TripServiceDep) -> EventModel:
     return await trips.require_event(access.trip.id, event_id)
 

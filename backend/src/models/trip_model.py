@@ -17,7 +17,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.database import Base, CreatedAt, Timestamps
-from src.models.user_model import UserModel
 
 
 class TripModel(Timestamps, Base):
@@ -148,18 +147,3 @@ class AttachmentModel(CreatedAt, Base):
     client_request_id: Mapped[UUID | None]
 
     event: Mapped[EventModel] = relationship(back_populates="attachments", lazy="raise")
-
-
-class EventCommentModel(CreatedAt, Base):
-    __tablename__ = "event_comments"
-    __table_args__ = (
-        Index("ix_event_comments_event_created_id", "event_id", "created_at", "id"),
-        Index("ix_event_comment_author", "author_id"),
-    )
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"))
-    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    body: Mapped[str] = mapped_column(Text)
-
-    author: Mapped[UserModel] = relationship(lazy="raise")

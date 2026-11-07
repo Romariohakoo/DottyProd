@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,11 +21,9 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
 
     telegram_client_id: str = ""
-    telegram_client_secret: SecretStr = SecretStr("")
+    telegram_client_secret: str = ""
     telegram_redirect_uri: str = "http://localhost:8080/api/auth/telegram/callback"
     frontend_url: str = "http://localhost:3000"
-    telegram_bot_token: SecretStr = SecretStr("")
-    telegram_notifications_enabled: bool = False
 
     cors_origins: str = "http://localhost:3000"
 
@@ -42,6 +40,9 @@ class Settings(BaseSettings):
     upload_max_bytes: int = 10_485_760
     upload_max_pixels: int = 40_000_000
     upload_max_per_event: int = 20
+
+    # Создавать при старте демо-пользователей user1name…user7name (src/services/demo_users.py)
+    seed_demo_users: bool = True
 
     @field_validator("cookie_samesite", mode="before")
     @classmethod

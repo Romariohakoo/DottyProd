@@ -3,21 +3,23 @@ from datetime import date, datetime, timedelta, timezone
 from src.models.trip_model import EventModel, PlaceModel, TripMemberModel, TripModel
 
 TRIPS_URL = "/api/trips"
-def _register(client, username, identity):
-    import asyncio
-    import hashlib
-    from src.main import app
-    from src.services.auth_service import AuthService
+REGISTER_URL = "/api/auth/register"
+LOGIN_URL = "/api/auth/login"
 
-    async def create():
-        async with app.state.test_session_factory() as session:
-            user, tokens = await AuthService(session).login_telegram({
-                "sub": identity,
-                "id": int.from_bytes(hashlib.sha256(identity.encode()).digest()[:6], "big"),
-                "preferred_username": username,
-            })
-            return user.id, {"Authorization": f"Bearer {tokens.access.value}"}
-    return asyncio.run(create())
+
+def _register(client, username, email):
+    response = client.post(
+        REGISTER_URL,
+        json={"username": username, "email": email, "password": "secret123"},
+    )
+    assert response.status_code == 201
+    login = client.post(LOGIN_URL, json={"email": email, "password": "secret123"})
+    assert login.status_code == 200
+    token = login.cookies["access_token"]
+    # Логин кладёт куку в jar клиента. Чистим её, чтобы следующие запросы
+    # без заголовка не шли от последнего залогиненного пользователя.
+    client.cookies.clear()
+    return response.json()["id"], {"Authorization": f"Bearer {token}"}
 
 
 def _trip(owner_id, title, start: date, **overrides):
