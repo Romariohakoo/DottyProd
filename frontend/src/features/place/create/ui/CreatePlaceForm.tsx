@@ -1,13 +1,13 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
+import { PlaceAddressSearch } from "@entities/place";
 import { Button, FormError, FormField } from "@shared/ui";
 
 import { useCreatePlaceMutation } from "../model/use-create-place-mutation";
 import { type CreatePlaceValues, createPlaceSchema } from "../model/validation";
-import { PlaceAddressSearch } from "./PlaceAddressSearch";
 
 interface CreatePlaceFormProps {
   tripId: number;
@@ -26,6 +26,8 @@ export function CreatePlaceForm({ tripId, onSuccess }: CreatePlaceFormProps) {
     handleSubmit,
     formState: { errors },
   } = form;
+
+  const address = useWatch({ control: form.control, name: "address" });
 
   const onSubmit = (values: CreatePlaceValues) => {
     mutate(
@@ -54,7 +56,49 @@ export function CreatePlaceForm({ tripId, onSuccess }: CreatePlaceFormProps) {
           error={errors.name?.message}
           {...register("name")}
         />
-        <PlaceAddressSearch form={form} />
+        <input
+          type="hidden"
+          {...register("latitude", { valueAsNumber: true })}
+        />
+        <input
+          type="hidden"
+          {...register("longitude", { valueAsNumber: true })}
+        />
+        <PlaceAddressSearch
+          id="place-address"
+          address={address}
+          error={
+            errors.address?.message ??
+            (errors.latitude || errors.longitude
+              ? "Найдите адрес, чтобы определить расположение места."
+              : undefined)
+          }
+          onAddressChange={(value) => {
+            form.setValue("address", value, { shouldDirty: true });
+            form.resetField("latitude");
+            form.resetField("longitude");
+            form.clearErrors(["address", "latitude", "longitude"]);
+          }}
+          onSelect={(result) => {
+            if (!result.geometry) return;
+            const [longitude, latitude] = result.geometry.coordinates;
+            form.setValue("longitude", longitude, {
+              shouldDirty: true,
+              shouldValidate: true,
+            });
+            form.setValue("latitude", latitude, {
+              shouldDirty: true,
+              shouldValidate: true,
+            });
+            form.setValue(
+              "address",
+              [result.properties.description, result.properties.name]
+                .filter(Boolean)
+                .join(", "),
+              { shouldDirty: true, shouldValidate: true },
+            );
+          }}
+        />
       </fieldset>
 
       {error ? (

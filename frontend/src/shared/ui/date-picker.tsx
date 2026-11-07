@@ -13,6 +13,9 @@ interface DatePickerProps {
   "aria-describedby"?: string;
   value: string;
   onChange: (value: string) => void;
+  endValue?: string;
+  onEndChange?: (value: string) => void;
+  requireEnd?: boolean;
   onBlur?: () => void;
   ref?: React.Ref<HTMLButtonElement>;
   name?: string;
@@ -54,6 +57,9 @@ export function DatePicker({
   "aria-describedby": describedBy,
   value,
   onChange,
+  endValue = "",
+  onEndChange,
+  requireEnd = false,
   onBlur,
   ref,
   name,
@@ -69,6 +75,9 @@ export function DatePicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  const [draftStart, setDraftStart] = useState("");
+  const [draftEnd, setDraftEnd] = useState("");
+  const [choosingEnd, setChoosingEnd] = useState(false);
   const [view, setView] = useState({ year: 2000, month: 0 });
   const [yearInput, setYearInput] = useState("2000");
   const [focusedDay, setFocusedDay] = useState(1);
@@ -158,13 +167,18 @@ export function DatePicker({
                 : maxDay && today > maxDay
                   ? maxDay
                   : today);
+            setDraftStart(selected);
+            setDraftEnd(endValue.slice(0, 10));
+            setChoosingEnd(false);
             showMonth(parseDate(target), true);
             setOpen(true);
           }
         }}
       >
         <span id={`${fieldId}-value`}>
-          {selected ? formatDate(selected) : "Выберите дату"}
+          {selected
+            ? `${formatDate(selected)}${endValue && endValue.slice(0, 10) !== selected ? ` — ${formatDate(endValue.slice(0, 10))}` : ""}`
+            : "Выберите дату"}
         </span>
         <span aria-hidden="true">{open ? "−" : "＋"}</span>
       </Button>
@@ -288,7 +302,15 @@ export function DatePicker({
                       <span
                         key={weekday}
                         role="gridcell"
-                        aria-selected={key === selected}
+                        aria-selected={
+                          onEndChange
+                            ? Boolean(
+                                draftStart &&
+                                key >= draftStart &&
+                                key <= (draftEnd || draftStart),
+                              )
+                            : key === selected
+                        }
                       >
                         <button
                           type="button"
@@ -296,17 +318,32 @@ export function DatePicker({
                           tabIndex={day === focusedDay ? 0 : -1}
                           disabled={disabled}
                           aria-disabled={blocked}
-                          aria-label={formatDate(key)}
-                          className="m3-calendar-day"
+                          aria-label={
+                            key === draftStart && key === draftEnd
+                              ? `${formatDate(key)}, начало и окончание`
+                              : formatDate(key)
+                          }
+                          className={`m3-calendar-day ${key === draftStart && key === draftEnd ? "ring-2 ring-inset ring-on-primary" : ""}`}
                           onFocus={() => setFocusedDay(day)}
                           onClick={() => {
                             if (blocked) return;
-                            onChange(
-                              withTime
-                                ? `${key}T${hours}:${minutes}${timeSuffix}`
-                                : key,
-                            );
-                            close();
+                            if (onEndChange) {
+                              if (!choosingEnd || key < draftStart) {
+                                setDraftStart(key);
+                                setDraftEnd("");
+                                setChoosingEnd(true);
+                              } else {
+                                setDraftEnd(key);
+                                setChoosingEnd(false);
+                              }
+                            } else {
+                              onChange(
+                                withTime
+                                  ? `${key}T${hours}:${minutes}${timeSuffix}`
+                                  : key,
+                              );
+                              close();
+                            }
                           }}
                           onKeyDown={(event) => {
                             const offsets: Record<string, number> = {
@@ -363,9 +400,40 @@ export function DatePicker({
               ),
             )}
           </div>
+          {onEndChange && draftStart ? (
+            <p className="m3-support" aria-live="polite">
+              Начало: {formatDate(draftStart)}. Окончание:{" "}
+              {draftEnd ? formatDate(draftEnd) : "не выбрано"}.
+            </p>
+          ) : null}
           <p className="m3-support">
             День — стрелками, месяц — Page Up / Page Down. Enter — выбрать.
           </p>
+          {requireEnd && !draftEnd ? (
+            <p className="m3-support">Выберите дату начала и дату окончания.</p>
+          ) : null}
+          {onEndChange ? (
+            <Button
+              variant="text"
+              disabled={!draftStart || (requireEnd && !draftEnd)}
+              onClick={() => {
+                onChange(
+                  withTime
+                    ? `${draftStart}T${hours}:${minutes}${timeSuffix}`
+                    : draftStart,
+                );
+                const end = draftEnd;
+                onEndChange(
+                  end && withTime
+                    ? `${end}T${endValue.slice(11) || `${hours}:${minutes}${timeSuffix}`}`
+                    : end,
+                );
+                close();
+              }}
+            >
+              ОК
+            </Button>
+          ) : null}
           <Button variant="text" onClick={close}>
             Закрыть календарь
           </Button>
@@ -413,6 +481,46 @@ export function DatePicker({
           </SelectField>
         </div>
       ) : null}
+      {withTime && onEndChange && endValue ? (
+        <div className="grid grid-cols-2 gap-3">
+          <SelectField
+            label="Часы окончания"
+            id={`${fieldId}-end-hours`}
+            disabled={disabled}
+            value={endValue.slice(11, 13) || "00"}
+            onBlur={onBlur}
+            onChange={(event) =>
+              onEndChange(
+                `${endValue.slice(0, 11)}${event.target.value}${endValue.slice(13)}`,
+              )
+            }
+          >
+            {Array.from({ length: 24 }, (_, hour) => (
+              <option key={hour} value={pad(hour)}>
+                {pad(hour)}
+              </option>
+            ))}
+          </SelectField>
+          <SelectField
+            label="Минуты окончания"
+            id={`${fieldId}-end-minutes`}
+            disabled={disabled}
+            value={endValue.slice(14, 16) || "00"}
+            onBlur={onBlur}
+            onChange={(event) =>
+              onEndChange(
+                `${endValue.slice(0, 14)}${event.target.value}${endValue.slice(16)}`,
+              )
+            }
+          >
+            {Array.from({ length: 60 }, (_, minute) => (
+              <option key={minute} value={pad(minute)}>
+                {pad(minute)}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+      ) : null}
       {value ? (
         <Button
           disabled={disabled}
@@ -420,6 +528,7 @@ export function DatePicker({
           className="self-start"
           onClick={() => {
             onChange("");
+            onEndChange?.("");
             onBlur?.();
           }}
         >

@@ -178,37 +178,26 @@ export function CreateEventForm({
               name="startAt"
               control={form.control}
               render={({ field }) => (
-                <DatePicker
-                  {...field}
-                  label="Начало"
-                  id="event-start-at"
-                  withTime
-                  min={trip.startDate}
-                  max={trip.endDate}
-                  disabled={isPending}
-                  error={errors.startAt?.message}
-                  aria-describedby={
-                    scheduleError ? "event-schedule-error" : undefined
-                  }
-                />
-              )}
-            />
-            <Controller
-              name="endAt"
-              control={form.control}
-              render={({ field }) => (
-                <DatePicker
-                  {...field}
-                  label="Окончание (необязательно)"
-                  id="event-end-at"
-                  withTime
-                  min={trip.startDate}
-                  max={trip.endDate}
-                  disabled={isPending}
-                  error={errors.endAt?.message}
-                  aria-describedby={
-                    scheduleError ? "event-schedule-error" : undefined
-                  }
+                <Controller
+                  name="endAt"
+                  control={form.control}
+                  render={({ field: endField }) => (
+                    <DatePicker
+                      {...field}
+                      label="Дата и время"
+                      id="event-start-at"
+                      withTime
+                      endValue={endField.value}
+                      onEndChange={endField.onChange}
+                      min={trip.startDate}
+                      max={trip.endDate}
+                      disabled={isPending}
+                      error={errors.startAt?.message || errors.endAt?.message}
+                      aria-describedby={
+                        scheduleError ? "event-schedule-error" : undefined
+                      }
+                    />
+                  )}
                 />
               )}
             />

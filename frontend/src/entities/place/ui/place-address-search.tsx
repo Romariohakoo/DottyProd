@@ -1,9 +1,9 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { type UseFormReturn, useWatch } from "react-hook-form";
+import { useState } from "react";
 
-import { PlaceMap } from "@entities/place";
+import type { SearchResponse } from "ymaps3";
 import {
   YANDEX_GEOCODER_API_KEY,
   YANDEX_SUGGEST_API_KEY,
@@ -12,16 +12,25 @@ import { useYandexMaps } from "@shared/lib";
 import { Button, FormError, FormField, StatusMessage } from "@shared/ui";
 
 import { geocodeAddress } from "../api/geocode-address";
-import type { CreatePlaceValues } from "../model/validation";
+import { PlaceMap } from "./place-map";
 
 interface PlaceAddressSearchProps {
-  form: UseFormReturn<CreatePlaceValues>;
+  id: string;
+  address: string;
+  error?: string;
+  onAddressChange: (address: string) => void;
+  onSelect: (result: SearchResponse[number]) => void;
 }
 
-export function PlaceAddressSearch({ form }: PlaceAddressSearchProps) {
+export function PlaceAddressSearch({
+  id,
+  address,
+  error,
+  onAddressChange,
+  onSelect,
+}: PlaceAddressSearchProps) {
   const maps = useYandexMaps();
-  const address = useWatch({ control: form.control, name: "address" });
-  const errors = form.formState.errors;
+  const [addressError, setAddressError] = useState("");
   const suggestions = useMutation({
     mutationFn: async (text: string) => {
       if (!maps.data || !YANDEX_SUGGEST_API_KEY) {
@@ -43,70 +52,40 @@ export function PlaceAddressSearch({ form }: PlaceAddressSearchProps) {
     onSuccess: (result) => {
       if (!result?.geometry) return;
 
-      const [longitude, latitude] = result.geometry.coordinates;
-      form.setValue("longitude", longitude, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-      form.setValue("latitude", latitude, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-      form.setValue(
-        "address",
-        [result.properties.description, result.properties.name]
-          .filter(Boolean)
-          .join(", "),
-        { shouldDirty: true, shouldValidate: true },
-      );
+      setAddressError("");
+      onSelect(result);
     },
   });
 
   const findAddress = () => {
     if (!address.trim()) {
-      form.setError("address", { message: "Введите адрес для поиска." });
-      form.setFocus("address");
+      setAddressError("Введите адрес для поиска.");
       return;
     }
+    setAddressError("");
     suggestions.reset();
     geocode.reset();
-    form.resetField("latitude");
-    form.resetField("longitude");
-    form.clearErrors(["address", "latitude", "longitude"]);
+    onAddressChange(address);
     suggestions.mutate(address.trim());
   };
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <input
-        type="hidden"
-        {...form.register("latitude", { valueAsNumber: true })}
-      />
-      <input
-        type="hidden"
-        {...form.register("longitude", { valueAsNumber: true })}
-      />
       <FormField
         label="Адрес"
+        id={id}
         type="text"
         maxLength={1000}
         placeholder="Город, улица, дом"
         disabled={suggestions.isPending || geocode.isPending}
-        error={
-          errors.address?.message ??
-          (errors.latitude || errors.longitude
-            ? "Найдите адрес, чтобы определить расположение места."
-            : undefined)
-        }
-        {...form.register("address", {
-          onChange: () => {
-            suggestions.reset();
-            geocode.reset();
-            form.resetField("latitude");
-            form.resetField("longitude");
-            form.clearErrors(["address", "latitude", "longitude"]);
-          },
-        })}
+        error={addressError || error}
+        value={address}
+        onChange={(event) => {
+          setAddressError("");
+          suggestions.reset();
+          geocode.reset();
+          onAddressChange(event.target.value);
+        }}
       />
       <Button
         type="button"
@@ -170,9 +149,7 @@ export function PlaceAddressSearch({ form }: PlaceAddressSearchProps) {
                   aria-pressed={geocode.variables === suggestion.uri}
                   onClick={() => {
                     geocode.reset();
-                    form.resetField("latitude");
-                    form.resetField("longitude");
-                    form.clearErrors(["address", "latitude", "longitude"]);
+                    onAddressChange(address);
                     geocode.mutate(suggestion.uri);
                   }}
                 >

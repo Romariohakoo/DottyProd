@@ -10,7 +10,6 @@ export function TripMap({ places }: TripMapProps) {
       className="flex min-w-0 flex-col gap-3"
       aria-label="Места на карте"
     >
-      <h2 className="text-xl font-semibold">Места на карте</h2>
       <PlaceMap places={places} />
       {!places.length ? (
         <p className="text-sm text-foreground/70">

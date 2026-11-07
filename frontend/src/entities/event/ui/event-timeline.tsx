@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { Button, DateTimeText, Dialog, FormField } from "@shared/ui";
 
@@ -36,6 +37,19 @@ export function EventTimeline({
   isPopupOpen,
   onSelect,
 }: EventTimelineProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const scaleParam = searchParams?.get("timeline-scale");
+  const scaleValue = Number(scaleParam);
+  const zoom =
+    scaleParam &&
+    Number.isInteger(scaleValue) &&
+    scaleValue >= 50 &&
+    scaleValue <= 300 &&
+    scaleValue % 25 === 0
+      ? scaleValue
+      : 100;
   const headingId = useId();
   const scrollId = useId();
   const zoomId = useId();
@@ -49,7 +63,6 @@ export function EventTimeline({
   } | null>(null);
   const suppressClick = useRef(false);
   const [scrollable, setScrollable] = useState({ left: false, right: false });
-  const [zoom, setZoom] = useState(100);
   const isClient = useSyncExternalStore(
     subscribe,
     () => true,
@@ -195,7 +208,9 @@ export function EventTimeline({
                     ((center - PADDING) * nextZoom) / zoom -
                     container.clientWidth / 2;
                 }
-                setZoom(nextZoom);
+                const params = new URLSearchParams(searchParams?.toString());
+                params.set("timeline-scale", String(nextZoom));
+                router.replace(`${pathname}?${params}`, { scroll: false });
               }}
             />
           </div>

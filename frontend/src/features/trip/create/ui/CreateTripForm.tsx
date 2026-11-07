@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 
 import { DatePicker, FormError, FormField, SubmitButton } from "@shared/ui";
 
@@ -33,9 +33,6 @@ export function CreateTripForm({ onSuccess }: CreateTripFormProps) {
     mode: "onTouched",
     resolver: zodResolver(createTripSchema),
   });
-
-  const startDate = useWatch({ control, name: "startDate" });
-  const endDate = useWatch({ control, name: "endDate" });
 
   const onSubmit = (values: CreateTripValues) => {
     mutate(
@@ -82,25 +79,20 @@ export function CreateTripForm({ onSuccess }: CreateTripFormProps) {
             name="startDate"
             control={control}
             render={({ field, fieldState }) => (
-              <DatePicker
-                {...field}
-                label="Дата начала"
-                disabled={isPending}
-                max={endDate || undefined}
-                error={fieldState.error?.message}
-              />
-            )}
-          />
-          <Controller
-            name="endDate"
-            control={control}
-            render={({ field, fieldState }) => (
-              <DatePicker
-                {...field}
-                label="Дата окончания"
-                disabled={isPending}
-                min={startDate || undefined}
-                error={fieldState.error?.message}
+              <Controller
+                name="endDate"
+                control={control}
+                render={({ field: endField, fieldState: endState }) => (
+                  <DatePicker
+                    {...field}
+                    label="Даты путешествия"
+                    endValue={endField.value}
+                    onEndChange={endField.onChange}
+                    requireEnd
+                    disabled={isPending}
+                    error={fieldState.error?.message || endState.error?.message}
+                  />
+                )}
               />
             )}
           />

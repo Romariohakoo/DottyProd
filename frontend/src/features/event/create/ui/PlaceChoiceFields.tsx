@@ -2,7 +2,7 @@
 
 import { type UseFormReturn, useWatch } from "react-hook-form";
 
-import type { Place } from "@entities/place";
+import { PlaceAddressSearch, type Place } from "@entities/place";
 import { FormField, SelectField } from "@shared/ui";
 
 import type { CreateEventValues } from "../model/validation";
@@ -24,6 +24,7 @@ export function PlaceChoiceFields({
 }: PlaceChoiceFieldsProps) {
   const mode = useWatch({ control: form.control, name: `${name}.mode` });
   const errors = form.formState.errors[name];
+  const address = useWatch({ control: form.control, name: `${name}.address` });
 
   return (
     <fieldset className="m3-group bg-surface-bright">
@@ -70,32 +71,47 @@ export function PlaceChoiceFields({
             error={errors?.name?.message}
             {...form.register(`${name}.name`)}
           />
-          <FormField
-            label="Адрес (необязательно)"
-            type="text"
-            error={errors?.address?.message}
-            {...form.register(`${name}.address`)}
+          <input type="hidden" {...form.register(`${name}.latitude`)} />
+          <input type="hidden" {...form.register(`${name}.longitude`)} />
+          <PlaceAddressSearch
+            id={`${name}-address`}
+            address={address}
+            error={
+              errors?.address?.message ??
+              (errors?.latitude || errors?.longitude
+                ? "Найдите адрес, чтобы определить расположение места."
+                : undefined)
+            }
+            onAddressChange={(value) => {
+              form.setValue(`${name}.address`, value, { shouldDirty: true });
+              form.setValue(`${name}.latitude`, "", { shouldDirty: true });
+              form.setValue(`${name}.longitude`, "", { shouldDirty: true });
+              form.clearErrors([
+                `${name}.address`,
+                `${name}.latitude`,
+                `${name}.longitude`,
+              ]);
+            }}
+            onSelect={(result) => {
+              if (!result.geometry) return;
+              const [longitude, latitude] = result.geometry.coordinates;
+              form.setValue(`${name}.longitude`, String(longitude), {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+              form.setValue(`${name}.latitude`, String(latitude), {
+                shouldDirty: true,
+                shouldValidate: true,
+              });
+              form.setValue(
+                `${name}.address`,
+                [result.properties.description, result.properties.name]
+                  .filter(Boolean)
+                  .join(", "),
+                { shouldDirty: true, shouldValidate: true },
+              );
+            }}
           />
-          <div className="grid min-w-0 gap-4">
-            <FormField
-              label="Широта"
-              type="number"
-              step="any"
-              min={-90}
-              max={90}
-              error={errors?.latitude?.message}
-              {...form.register(`${name}.latitude`)}
-            />
-            <FormField
-              label="Долгота"
-              type="number"
-              step="any"
-              min={-180}
-              max={180}
-              error={errors?.longitude?.message}
-              {...form.register(`${name}.longitude`)}
-            />
-          </div>
         </>
       ) : null}
     </fieldset>
