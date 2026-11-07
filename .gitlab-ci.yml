@@ -202,19 +202,11 @@ deploy:
         sudo env \
           FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
           BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
-          docker compose down &&
-        sudo env \
-          FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
-          BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
           docker compose pull &&
         sudo env \
           FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
           BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
-          docker compose up -d &&
-        sudo env \
-          FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
-          BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
-          docker compose up -d --no-deps --force-recreate grafana prometheus alloy &&
+          docker compose up -d --force-recreate --remove-orphans &&
         sudo env \
           FRONTEND_IMAGE_NAME=$FRONTEND_IMAGE_NAME \
           BACKEND_IMAGE_NAME=$BACKEND_IMAGE_NAME \
