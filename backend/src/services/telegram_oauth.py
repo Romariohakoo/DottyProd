@@ -11,7 +11,6 @@ import jwt
 from src.core.config import settings
 
 TELEGRAM_AUTH_URL = "https://oauth.telegram.org/auth"
-TELEGRAM_TOKEN_URL = "https://oauth.telegram.org/token"
 
 
 def _derive_verifier(state: str) -> str:
@@ -53,19 +52,27 @@ def build_telegram_auth_url() -> str:
 
 async def fetch_telegram_user(code: str, state: str) -> dict:
     verifier = _derive_verifier(state)
+    relay = settings.telegram_relay_url.rstrip("/")
+    token_url = f"{relay}/token" if relay else "https://oauth.telegram.org/token"
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(
-            TELEGRAM_TOKEN_URL,
-            auth=(settings.telegram_client_id, settings.telegram_client_secret),
-            data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": settings.telegram_redirect_uri,
-                "client_id": settings.telegram_client_id,
-                "code_verifier": verifier,
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                token_url,
+                auth=(settings.telegram_client_id, settings.telegram_client_secret),
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": settings.telegram_redirect_uri,
+                    "client_id": settings.telegram_client_id,
+                    "code_verifier": verifier,
+                },
+            )
+    except httpx.HTTPError:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "Cannot reach Telegram relay server",
+        ) from None
 
     if resp.status_code != 200:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Failed to exchange Telegram code")

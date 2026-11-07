@@ -11,12 +11,16 @@ from src.models.notification_model import NotificationModel
 from src.models.user_model import UserModel
 
 logger = logging.getLogger(__name__)
-BOT_API = "https://api.telegram.org/bot"
+
+
+def _bot_api_base() -> str:
+    relay = settings.telegram_relay_url.rstrip("/")
+    return f"{relay}/bot" if relay else "https://api.telegram.org/bot"
 
 
 async def telegram_call(client: httpx.AsyncClient, method: str, payload: dict):
     try:
-        response = await client.post(f"{BOT_API}{settings.telegram_bot_token}/{method}", json=payload)
+        response = await client.post(f"{_bot_api_base()}{settings.telegram_bot_token}/{method}", json=payload)
         response.raise_for_status()
     except httpx.HTTPStatusError as exc:
         raise RuntimeError(f"Telegram HTTP {exc.response.status_code}") from None
