@@ -5,7 +5,15 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_serializer,
+    model_validator,
+)
 
 Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 Url = Annotated[str, StringConstraints(strip_whitespace=True, max_length=2048)]
@@ -123,6 +131,23 @@ class PlaceDTO(FromORM):
     address: str | None
     latitude: float
     longitude: float
+
+
+class PlaceRecommendation(BaseModel):
+    name: str
+    latitude: float
+    longitude: float
+
+
+class PlaceCreatedDTO(PlaceDTO):
+    recommendation: PlaceRecommendation | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_recommendation(self, handler):
+        data = handler(self)
+        if isinstance(data, dict) and data.get("recommendation") is None:
+            data.pop("recommendation")
+        return data
 
 
 class AttachmentDTO(FromORM):

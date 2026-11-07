@@ -30,6 +30,7 @@ from src.schemas.travel import (
     EventInput,
     MovementDTO,
     PlaceChoice,
+    PlaceCreatedDTO,
     PlaceDTO,
     PlaceInput,
     PlaceRef,
@@ -41,6 +42,7 @@ from src.schemas.travel import (
     TripInput,
     UserStats,
 )
+from src.services.place_recommendations import recommend_nearby
 from src.services.schedule_check import EventInterval, TripInterval, find_schedule_issues
 from src.storage.s3 import get_storage
 
@@ -180,21 +182,27 @@ class TripService:
 
         await self._delete_files(keys)
 
-    async def create_place(self, access: TripAccess, data: PlaceInput) -> PlaceDTO:
+    async def create_place(
+        self,
+        access: TripAccess,
+        data: PlaceInput,
+        *,
+        recomend_another: bool = False,
+    ) -> PlaceCreatedDTO:
         require_role(access, EDITORS)
         await self.trips.lock_trip(access.trip.id)
 
         if data.client_request_id is not None:
             existing = await self.trips.get_place_by_request(access.trip.id, data.client_request_id)
             if existing is not None:
-                return PlaceDTO.model_validate(existing)
+                return _place_created(existing, data, recomend_another)
 
         place = PlaceModel(trip_id=access.trip.id, **data.model_dump())
         self.session.add(place)
         await self._commit()
         await self.session.refresh(place)
 
-        return PlaceDTO.model_validate(place)
+        return _place_created(place, data, recomend_another)
 
     async def update_place(self, access: TripAccess, place_id: int, data: PlaceInput) -> PlaceDTO:
         require_role(access, EDITORS)
@@ -412,6 +420,15 @@ class TripService:
     async def _delete_files(self, keys: list[str]) -> None:
         for key in keys:
             await self.storage.delete(key)
+
+
+def _place_created(place: PlaceModel, data: PlaceInput, recomend_another: bool) -> PlaceCreatedDTO:
+    created = PlaceCreatedDTO.model_validate(place)
+    if not recomend_another:
+        return created
+    return created.model_copy(
+        update={"recommendation": recommend_nearby(data.latitude, data.longitude)}
+    )
 
 
 def _assign(model, data: BaseModel) -> None:
