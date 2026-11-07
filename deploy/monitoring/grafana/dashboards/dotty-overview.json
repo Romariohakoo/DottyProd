@@ -331,78 +331,6 @@
       }
     },
     {
-      "id": 7,
-      "type": "stat",
-      "title": "Ответ p95",
-      "description": "95% запросов за период обработаны быстрее этого времени.",
-      "gridPos": {
-        "x": 15,
-        "y": 1,
-        "w": 5,
-        "h": 4
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[$__range])))",
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 300
-              },
-              {
-                "color": "red",
-                "value": 1000
-              }
-            ]
-          },
-          "mappings": [
-            {
-              "type": "special",
-              "options": {
-                "match": "nan",
-                "result": {
-                  "text": "—"
-                }
-              }
-            }
-          ],
-          "noValue": "0"
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "textMode": "value",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        }
-      }
-    },
-    {
       "id": 8,
       "type": "stat",
       "title": "Активные алерты",
@@ -521,24 +449,6 @@
           "expr": "100 * (sum by (method, handler) (increase(http_requests_total{job=\"backend\",status=\"5xx\"}[$__range])) or sum by (method, handler) (increase(http_requests_total{job=\"backend\"}[$__range])) * 0) / clamp_min(sum by (method, handler) (increase(http_requests_total{job=\"backend\"}[$__range])), 1)",
           "instant": true,
           "format": "table"
-        },
-        {
-          "refId": "E",
-          "expr": "1000 * histogram_quantile(0.5, sum by (le, method, handler) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[$__range])))",
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "refId": "F",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le, method, handler) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[$__range])))",
-          "instant": true,
-          "format": "table"
-        },
-        {
-          "refId": "G",
-          "expr": "1000 * histogram_quantile(0.99, sum by (le, method, handler) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[$__range])))",
-          "instant": true,
-          "format": "table"
         }
       ],
       "transformations": [
@@ -558,10 +468,7 @@
               "Value #A": 2,
               "Value #B": 3,
               "Value #C": 4,
-              "Value #D": 5,
-              "Value #E": 6,
-              "Value #F": 7,
-              "Value #G": 8
+              "Value #D": 5
             },
             "renameByName": {
               "method": "Метод",
@@ -569,10 +476,7 @@
               "Value #A": "Запросов",
               "Value #B": "В минуту",
               "Value #C": "4xx, %",
-              "Value #D": "5xx, %",
-              "Value #E": "p50",
-              "Value #F": "p95",
-              "Value #G": "p99"
+              "Value #D": "5xx, %"
             }
           }
         },
@@ -752,135 +656,6 @@
                 }
               }
             ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p50"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "ms"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background",
-                  "mode": "basic"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "transparent",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 300
-                    },
-                    {
-                      "color": "red",
-                      "value": 1000
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p95"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "ms"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background",
-                  "mode": "basic"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "transparent",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 300
-                    },
-                    {
-                      "color": "red",
-                      "value": 1000
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p99"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "ms"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-background",
-                  "mode": "basic"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "transparent",
-                      "value": null
-                    },
-                    {
-                      "color": "orange",
-                      "value": 300
-                    },
-                    {
-                      "color": "red",
-                      "value": 1000
-                    }
-                  ]
-                }
-              }
-            ]
           }
         ]
       },
@@ -890,87 +665,6 @@
         "footer": {
           "show": false
         }
-      }
-    },
-    {
-      "id": 10,
-      "type": "bargauge",
-      "title": "Самые медленные (p95 за период)",
-      "description": "Топ-10 ручек по времени ответа: 95% запросов быстрее этого значения.",
-      "gridPos": {
-        "x": 0,
-        "y": 15,
-        "w": 12,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "topk(10, 1000 * histogram_quantile(0.95, sum by (le, method, handler) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[$__range]))))",
-          "instant": true,
-          "legendFormat": "{{method}} {{handler}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "decimals": 0,
-          "min": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 300
-              },
-              {
-                "color": "red",
-                "value": 1000
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [
-            {
-              "type": "special",
-              "options": {
-                "match": "nan",
-                "result": {
-                  "text": "—"
-                }
-              }
-            }
-          ]
-        },
-        "overrides": []
-      },
-      "options": {
-        "orientation": "horizontal",
-        "displayMode": "gradient",
-        "showUnfilled": true,
-        "valueMode": "color",
-        "namePlacement": "top",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "sizing": "manual",
-        "minVizHeight": 18,
-        "maxVizHeight": 26,
-        "minVizWidth": 8
       }
     },
     {
@@ -1241,116 +935,6 @@
       }
     },
     {
-      "id": 15,
-      "type": "timeseries",
-      "title": "Время ответа: p50 / p95 / p99",
-      "description": "Как быстро отвечает backend в целом. p50 — типичный запрос, p99 — самые медленные 1%.",
-      "gridPos": {
-        "x": 12,
-        "y": 32,
-        "w": 12,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "1000 * histogram_quantile(0.5, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[5m])))",
-          "legendFormat": "p50 (типичный)"
-        },
-        {
-          "refId": "B",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[5m])))",
-          "legendFormat": "p95"
-        },
-        {
-          "refId": "C",
-          "expr": "1000 * histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"backend\"}[5m])))",
-          "legendFormat": "p99 (худшие 1%)"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "decimals": 0,
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 8,
-            "showPoints": "never",
-            "spanNulls": true,
-            "axisLabel": "мс"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p50 (типичный)"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "green"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p95"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "orange"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "p99 (худшие 1%)"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "mean",
-            "max"
-          ],
-          "sortBy": "Max",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
       "id": 16,
       "type": "row",
       "title": "Разбор эндпоинта (выбери «Эндпоинт» вверху)",
@@ -1474,60 +1058,6 @@
             "max"
           ],
           "sortBy": "Total",
-          "sortDesc": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
-      "id": 18,
-      "type": "timeseries",
-      "title": "Время ответа выбранных эндпоинтов (p95)",
-      "description": "По каждой ручке отдельно.",
-      "gridPos": {
-        "x": 12,
-        "y": 41,
-        "w": 12,
-        "h": 8
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "1000 * histogram_quantile(0.95, sum by (le, method, handler) (rate(http_request_duration_seconds_bucket{job=\"backend\",handler=~\"$handler\"}[5m])))",
-          "legendFormat": "{{method}} {{handler}}"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "decimals": 0,
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 8,
-            "showPoints": "never",
-            "spanNulls": true,
-            "axisLabel": "мс"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right",
-          "calcs": [
-            "mean",
-            "max"
-          ],
-          "sortBy": "Max",
           "sortDesc": true
         },
         "tooltip": {
