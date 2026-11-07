@@ -40,6 +40,16 @@ export interface PlaceDto {
   longitude: number;
 }
 
+export interface AttachmentDto {
+  id: number;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  createdAt: string;
+}
+
 interface EventBaseDto {
   id: number;
   title: string;
@@ -48,6 +58,7 @@ interface EventBaseDto {
   endAt: string | null;
   bookingUrl: string | null;
   createdBy: number;
+  attachments: AttachmentDto[];
 }
 
 export interface ActivityDto extends EventBaseDto {
