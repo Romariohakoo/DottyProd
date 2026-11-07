@@ -1,38 +1,61 @@
 "use client";
 
-import { formatDate } from "@shared/lib";
-import { Button } from "@shared/ui";
+import { formatDateTime } from "@shared/lib";
 
 import type { TripCard } from "../model";
 
 interface TripListProps {
   trips: TripCard[];
+  featured?: boolean;
   onSelect: (tripId: number) => void;
 }
 
-export function TripList({ trips, onSelect }: TripListProps) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function tripBadge(trip: TripCard, today: number): string {
+  const start = Date.parse(trip.startDate);
+  const end = Date.parse(trip.endDate);
+  if (end < today) return "Завершена";
+  if (start <= today) return "Сейчас в пути";
+  const days = Math.ceil((start - today) / DAY_MS);
+  return days === 1 ? "Завтра" : `Через ${days} дн.`;
+}
+
+export function TripList({ trips, featured = false, onSelect }: TripListProps) {
+  const today = new Date().setHours(0, 0, 0, 0);
+
   return (
-    <ul className="m3-card-list">
+    <ul className={`m3-trip-grid ${featured ? "m3-trip-grid--featured" : ""}`}>
       {trips.map((trip) => (
         <li key={trip.id} className="min-w-0">
-          <Button
+          <button
             type="button"
             onClick={() => onSelect(trip.id)}
-            variant="card"
+            className="m3-trip-card"
           >
-            <span className="m3-card-content self-stretch">
-              <span className="m3-card-meta">{trip.country}</span>
-              <span className="m3-title">{trip.title}</span>
-              <span className="m3-card-meta mt-auto">
-                <time dateTime={trip.startDate}>
-                  {formatDate(trip.startDate)}
-                </time>
-                {" — "}
-                <time dateTime={trip.endDate}>{formatDate(trip.endDate)}</time>
-              </span>
-              <span className="m3-card-meta">Роль: {trip.role}</span>
+            <span className="m3-trip-cover">
+              {trip.coverUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={trip.coverUrl} alt="" />
+              ) : (
+                <span className="m3-trip-cover-empty" aria-hidden="true">
+                  {trip.title.slice(0, 1)}
+                </span>
+              )}
+              <span className="m3-trip-badge">{tripBadge(trip, today)}</span>
             </span>
-          </Button>
+            <span className="m3-trip-title">{trip.title}</span>
+            <span className="m3-trip-meta">
+              {trip.country} ·{" "}
+              <time dateTime={trip.startDate}>
+                {formatDateTime(trip.startDate, undefined, true)}
+              </time>
+              {" — "}
+              <time dateTime={trip.endDate}>
+                {formatDateTime(trip.endDate, undefined, true)}
+              </time>
+            </span>
+          </button>
         </li>
       ))}
     </ul>

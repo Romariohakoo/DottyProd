@@ -1,14 +1,22 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
-import { DatePicker, FormError, FormField, SubmitButton } from "@shared/ui";
+import { TRIP_COVERS } from "@shared/config";
+import {
+  DatePicker,
+  FormError,
+  FormField,
+  Icon,
+  SubmitButton,
+} from "@shared/ui";
 
 import { useCreateTripMutation } from "../model/use-create-trip-mutation";
 import { type CreateTripValues, createTripSchema } from "../model/validation";
 
 interface CreateTripFormProps {
+  defaultValues?: Partial<CreateTripValues>;
   onSuccess?: () => void;
 }
 
@@ -18,21 +26,26 @@ const INITIAL_VALUES: CreateTripValues = {
   startDate: "",
   endDate: "",
   description: "",
-  coverUrl: "",
+  coverUrl: TRIP_COVERS[0].src,
 };
 
-export function CreateTripForm({ onSuccess }: CreateTripFormProps) {
+export function CreateTripForm({
+  defaultValues,
+  onSuccess,
+}: CreateTripFormProps) {
   const { mutate, isPending, error } = useCreateTripMutation();
   const {
     register,
     handleSubmit,
     control,
+    setValue,
     formState: { errors },
   } = useForm<CreateTripValues>({
-    defaultValues: INITIAL_VALUES,
+    defaultValues: { ...INITIAL_VALUES, ...defaultValues },
     mode: "onTouched",
     resolver: zodResolver(createTripSchema),
   });
+  const coverUrl = useWatch({ control, name: "coverUrl" });
 
   const onSubmit = (values: CreateTripValues) => {
     mutate(
@@ -55,64 +68,84 @@ export function CreateTripForm({ onSuccess }: CreateTripFormProps) {
       className="m3-form"
       noValidate
     >
-      <fieldset className="m3-form-section">
-        <legend className="m3-label px-2 text-primary">Направление</legend>
-        <FormField
-          label="Название поездки"
-          type="text"
-          maxLength={200}
-          error={errors.title?.message}
-          {...register("title")}
+      {coverUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={coverUrl}
+          alt=""
+          className="h-36 w-full rounded-large object-cover"
         />
-        <FormField
-          label="Страна"
-          type="text"
-          maxLength={200}
-          error={errors.country?.message}
-          {...register("country")}
-        />
-      </fieldset>
-      <fieldset className="m3-form-section">
-        <legend className="m3-label px-2 text-primary">Даты путешествия</legend>
-        <div className="grid min-w-0 gap-6">
+      ) : null}
+      <FormField
+        label="Название"
+        type="text"
+        maxLength={200}
+        placeholder="Например, четыре дня в Казани"
+        error={errors.title?.message}
+        {...register("title")}
+      />
+      <FormField
+        label="Страна"
+        type="text"
+        maxLength={200}
+        placeholder="Россия"
+        error={errors.country?.message}
+        {...register("country")}
+      />
+      <Controller
+        name="startDate"
+        control={control}
+        render={({ field, fieldState }) => (
           <Controller
-            name="startDate"
+            name="endDate"
             control={control}
-            render={({ field, fieldState }) => (
-              <Controller
-                name="endDate"
-                control={control}
-                render={({ field: endField, fieldState: endState }) => (
-                  <DatePicker
-                    {...field}
-                    label="Даты путешествия"
-                    endValue={endField.value}
-                    onEndChange={endField.onChange}
-                    requireEnd
-                    disabled={isPending}
-                    error={fieldState.error?.message || endState.error?.message}
-                  />
-                )}
+            render={({ field: endField, fieldState: endState }) => (
+              <DatePicker
+                {...field}
+                label="Даты"
+                endValue={endField.value}
+                onEndChange={endField.onChange}
+                requireEnd
+                disabled={isPending}
+                error={fieldState.error?.message || endState.error?.message}
               />
             )}
           />
+        )}
+      />
+      <FormField
+        label="Описание — необязательно"
+        type="text"
+        placeholder="Что хотите увидеть, с кем едете"
+        error={errors.description?.message}
+        {...register("description")}
+      />
+      <fieldset className="m3-field">
+        <legend className="m3-label mb-2">Обложка</legend>
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
+          {TRIP_COVERS.map((cover) => (
+            <button
+              key={cover.src}
+              type="button"
+              aria-label={cover.label}
+              aria-pressed={coverUrl === cover.src}
+              onClick={() => setValue("coverUrl", cover.src)}
+              className={`relative aspect-[4/3] overflow-hidden rounded-small ${
+                coverUrl === cover.src
+                  ? "ring-2 ring-primary ring-offset-2"
+                  : "opacity-80 hover:opacity-100"
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cover.src} alt="" className="size-full object-cover" />
+              {coverUrl === cover.src ? (
+                <span className="m3-dot absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-primary text-on-primary">
+                  <Icon name="check" size={12} />
+                </span>
+              ) : null}
+            </button>
+          ))}
         </div>
-      </fieldset>
-      <fieldset className="m3-form-section">
-        <legend className="m3-label px-2 text-primary">Детали поездки</legend>
-        <FormField
-          label="Описание (необязательно)"
-          type="text"
-          error={errors.description?.message}
-          {...register("description")}
-        />
-        <FormField
-          label="Путь к обложке (необязательно)"
-          type="text"
-          maxLength={2048}
-          error={errors.coverUrl?.message}
-          {...register("coverUrl")}
-        />
       </fieldset>
 
       {error ? (
