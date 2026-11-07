@@ -1,24 +1,32 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
+import type { Event } from "@entities/event";
 import type { Trip } from "@entities/trip";
-import { FormError, FormField } from "@shared/ui";
+import { formatDate, getEventScheduleError } from "@shared/lib";
+import { Button, DatePicker, FormError, FormField } from "@shared/ui";
 
 import { useUpdateTripMutation } from "../model/use-update-trip-mutation";
 import { type UpdateTripValues, updateTripSchema } from "../model/validation";
 
 interface UpdateTripFormProps {
   trip: Trip;
+  events: Event[];
   onSuccess?: () => void;
 }
 
-export function UpdateTripForm({ trip, onSuccess }: UpdateTripFormProps) {
+export function UpdateTripForm({
+  trip,
+  events,
+  onSuccess,
+}: UpdateTripFormProps) {
   const { mutate, isPending, error } = useUpdateTripMutation(trip.id);
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isValid, isDirty },
   } = useForm<UpdateTripValues>({
     defaultValues: {
@@ -33,8 +41,32 @@ export function UpdateTripForm({ trip, onSuccess }: UpdateTripFormProps) {
     resolver: zodResolver(updateTripSchema),
   });
 
+  const startDate = useWatch({ control, name: "startDate" });
+  const endDate = useWatch({ control, name: "endDate" });
+
+  const outsideEvent =
+    startDate && endDate && startDate <= endDate
+      ? events.find((event) =>
+          getEventScheduleError(
+            event.startAt,
+            event.endAt ?? "",
+            { startDate, endDate },
+            [],
+          ),
+        )
+      : undefined;
+  const scheduleError = outsideEvent
+    ? `Даты поездки не включают событие «${outsideEvent.title}». Сначала перенесите событие или расширьте даты поездки.`
+    : undefined;
+
   const onSubmit = (values: UpdateTripValues) => {
     if (!isDirty || isPending) return;
+    if (
+      events.some((event) =>
+        getEventScheduleError(event.startAt, event.endAt ?? "", values, []),
+      )
+    )
+      return;
     mutate(
       {
         ...values,
@@ -52,70 +84,109 @@ export function UpdateTripForm({ trip, onSuccess }: UpdateTripFormProps) {
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="flex flex-col gap-5"
+      className="m3-form"
       noValidate
     >
-      <dl className="grid gap-2 break-words text-sm">
-        <dt className="text-foreground/70">ID</dt>
-        <dd>{trip.id}</dd>
-        <dt className="text-foreground/70">Создана</dt>
-        <dd>{trip.createdAt}</dd>
-        <dt className="text-foreground/70">Изменена</dt>
-        <dd>{trip.updatedAt}</dd>
+      <dl className="m3-details rounded-medium bg-surface-container px-6">
+        <div className="m3-detail-row">
+          <dt>Изменена</dt>
+          <dd>
+            <time dateTime={trip.updatedAt}>{formatDate(trip.updatedAt)}</time>
+          </dd>
+        </div>
       </dl>
-      <FormField
-        label="Название поездки"
-        type="text"
-        maxLength={200}
-        error={errors.title?.message}
-        {...register("title")}
-      />
-      <FormField
-        label="Страна"
-        type="text"
-        maxLength={200}
-        error={errors.country?.message}
-        {...register("country")}
-      />
-      <FormField
-        label="Дата начала"
-        type="date"
-        error={errors.startDate?.message}
-        {...register("startDate")}
-      />
-      <FormField
-        label="Дата окончания"
-        type="date"
-        error={errors.endDate?.message}
-        {...register("endDate")}
-      />
-      <FormField
-        label="Описание (необязательно)"
-        type="text"
-        error={errors.description?.message}
-        {...register("description")}
-      />
-      <FormField
-        label="Путь к обложке (необязательно)"
-        type="text"
-        maxLength={2048}
-        error={errors.coverUrl?.message}
-        {...register("coverUrl")}
-      />
+      <fieldset className="m3-form-section">
+        <legend className="m3-label px-2 text-primary">Направление</legend>
+        <FormField
+          label="Название поездки"
+          type="text"
+          maxLength={200}
+          error={errors.title?.message}
+          {...register("title")}
+        />
+        <FormField
+          label="Страна"
+          type="text"
+          maxLength={200}
+          error={errors.country?.message}
+          {...register("country")}
+        />
+      </fieldset>
+      <fieldset className="m3-form-section">
+        <legend className="m3-label px-2 text-primary">Даты путешествия</legend>
+        <div className="grid min-w-0 gap-6">
+          <Controller
+            name="startDate"
+            control={control}
+            render={({ field, fieldState }) => (
+              <DatePicker
+                {...field}
+                label="Дата начала"
+                aria-describedby={
+                  scheduleError ? "trip-schedule-error" : undefined
+                }
+                disabled={isPending}
+                max={endDate || undefined}
+                error={fieldState.error?.message}
+              />
+            )}
+          />
+          <Controller
+            name="endDate"
+            control={control}
+            render={({ field, fieldState }) => (
+              <DatePicker
+                {...field}
+                label="Дата окончания"
+                aria-describedby={
+                  scheduleError ? "trip-schedule-error" : undefined
+                }
+                disabled={isPending}
+                min={startDate || undefined}
+                error={fieldState.error?.message}
+              />
+            )}
+          />
+        </div>
+      </fieldset>
+      <fieldset className="m3-form-section">
+        <legend className="m3-label px-2 text-primary">Детали поездки</legend>
+        <FormField
+          label="Описание (необязательно)"
+          type="text"
+          error={errors.description?.message}
+          {...register("description")}
+        />
+        <FormField
+          label="Путь к обложке (необязательно)"
+          type="text"
+          maxLength={2048}
+          error={errors.coverUrl?.message}
+          {...register("coverUrl")}
+        />
+      </fieldset>
 
+      {scheduleError ? (
+        <div id="trip-schedule-error">
+          <FormError>{scheduleError}</FormError>
+        </div>
+      ) : null}
       {error ? (
         <FormError>
           Не удалось сохранить поездку. Проверьте данные и попробуйте ещё раз.
         </FormError>
       ) : null}
 
-      <button
+      <Button
         type="submit"
-        disabled={!isValid || !isDirty || isPending}
-        className="mt-2 w-full cursor-pointer rounded-lg bg-accent px-5 py-3 text-base font-semibold text-foreground transition-colors enabled:hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={!isValid || !isDirty || isPending || Boolean(scheduleError)}
+        aria-busy={isPending}
+        className={`mt-2 w-full ${isPending ? "m3-loading" : ""}`}
       >
-        {isPending ? "Сохраняем…" : "Сохранить"}
-      </button>
+        <span role={isPending ? "status" : undefined}>
+          {isPending ? "Сохраняем…" : "Сохранить"}
+        </span>
+      </Button>
     </form>
   );
 }

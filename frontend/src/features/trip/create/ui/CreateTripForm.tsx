@@ -1,9 +1,9 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
-import { FormError, FormField, SubmitButton } from "@shared/ui";
+import { DatePicker, FormError, FormField, SubmitButton } from "@shared/ui";
 
 import { useCreateTripMutation } from "../model/use-create-trip-mutation";
 import { type CreateTripValues, createTripSchema } from "../model/validation";
@@ -26,12 +26,16 @@ export function CreateTripForm({ onSuccess }: CreateTripFormProps) {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<CreateTripValues>({
     defaultValues: INITIAL_VALUES,
     mode: "onTouched",
     resolver: zodResolver(createTripSchema),
   });
+
+  const startDate = useWatch({ control, name: "startDate" });
+  const endDate = useWatch({ control, name: "endDate" });
 
   const onSubmit = (values: CreateTripValues) => {
     mutate(
@@ -51,48 +55,73 @@ export function CreateTripForm({ onSuccess }: CreateTripFormProps) {
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="flex flex-col gap-5"
+      className="m3-form"
       noValidate
     >
-      <FormField
-        label="Название поездки"
-        type="text"
-        maxLength={200}
-        error={errors.title?.message}
-        {...register("title")}
-      />
-      <FormField
-        label="Страна"
-        type="text"
-        maxLength={200}
-        error={errors.country?.message}
-        {...register("country")}
-      />
-      <FormField
-        label="Дата начала"
-        type="date"
-        error={errors.startDate?.message}
-        {...register("startDate")}
-      />
-      <FormField
-        label="Дата окончания"
-        type="date"
-        error={errors.endDate?.message}
-        {...register("endDate")}
-      />
-      <FormField
-        label="Описание (необязательно)"
-        type="text"
-        error={errors.description?.message}
-        {...register("description")}
-      />
-      <FormField
-        label="Путь к обложке (необязательно)"
-        type="text"
-        maxLength={2048}
-        error={errors.coverUrl?.message}
-        {...register("coverUrl")}
-      />
+      <fieldset className="m3-form-section">
+        <legend className="m3-label px-2 text-primary">Направление</legend>
+        <FormField
+          label="Название поездки"
+          type="text"
+          maxLength={200}
+          error={errors.title?.message}
+          {...register("title")}
+        />
+        <FormField
+          label="Страна"
+          type="text"
+          maxLength={200}
+          error={errors.country?.message}
+          {...register("country")}
+        />
+      </fieldset>
+      <fieldset className="m3-form-section">
+        <legend className="m3-label px-2 text-primary">Даты путешествия</legend>
+        <div className="grid min-w-0 gap-6">
+          <Controller
+            name="startDate"
+            control={control}
+            render={({ field, fieldState }) => (
+              <DatePicker
+                {...field}
+                label="Дата начала"
+                disabled={isPending}
+                max={endDate || undefined}
+                error={fieldState.error?.message}
+              />
+            )}
+          />
+          <Controller
+            name="endDate"
+            control={control}
+            render={({ field, fieldState }) => (
+              <DatePicker
+                {...field}
+                label="Дата окончания"
+                disabled={isPending}
+                min={startDate || undefined}
+                error={fieldState.error?.message}
+              />
+            )}
+          />
+        </div>
+      </fieldset>
+      <fieldset className="m3-form-section">
+        <legend className="m3-label px-2 text-primary">Детали поездки</legend>
+        <FormField
+          label="Описание (необязательно)"
+          type="text"
+          error={errors.description?.message}
+          {...register("description")}
+        />
+        <FormField
+          label="Путь к обложке (необязательно)"
+          type="text"
+          maxLength={2048}
+          error={errors.coverUrl?.message}
+          {...register("coverUrl")}
+        />
+      </fieldset>
 
       {error ? (
         <FormError>

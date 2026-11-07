@@ -12,7 +12,7 @@ import {
 import { CreateTripForm } from "@features/trip/create";
 import { DeleteTripButton } from "@features/trip/delete";
 import { UpdateTripForm } from "@features/trip/update";
-import { Dialog, FormError, TextLink } from "@shared/ui";
+import { Button, Dialog, FormError, StatusMessage, TextLink } from "@shared/ui";
 
 export function TripsPage() {
   const router = useRouter();
@@ -48,59 +48,61 @@ export function TripsPage() {
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:px-8">
-      <h1 className="text-2xl font-semibold">Поездки</h1>
-      <button
-        type="button"
-        onClick={openCreate}
-        className="w-fit cursor-pointer rounded-lg bg-accent px-5 py-3 font-semibold hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-      >
-        Создать поездку
-      </button>
+    <main id="main-content" className="m3-page">
+      <header className="m3-page-heading">
+        <div className="min-w-0 space-y-4">
+          <p className="m3-eyebrow">ВАША КОЛЛЕКЦИЯ ПУТЕШЕСТВИЙ</p>
+          <h1 className="m3-headline">Поездки</h1>
+          <p className="max-w-lg">
+            Большие планы и маленькие открытия. Всё начинается здесь.
+          </p>
+        </div>
+        <Button
+          type="button"
+          onClick={openCreate}
+          className="w-full shrink-0 sm:w-auto"
+        >
+          <span aria-hidden="true">＋</span> Создать поездку
+        </Button>
+      </header>
       {trips.isPending ? (
-        <p role="status">Загружаем поездки…</p>
+        <StatusMessage loading>Загружаем поездки…</StatusMessage>
       ) : trips.isError ? (
         <FormError>
           Не удалось загрузить поездки. Попробуйте обновить страницу.
         </FormError>
       ) : trips.data.length === 0 ? (
-        <p className="text-foreground/70">Поездок пока нет.</p>
+        <StatusMessage>Поездок пока нет.</StatusMessage>
       ) : (
         <TripList trips={trips.data} onSelect={openTrip} />
       )}
       {popupType === "trip" || popupType === "create-trip" ? (
         <Dialog labelledBy="trip-popup-heading" onClose={closePopup}>
-          <section className="flex w-full min-w-0 flex-col gap-6 p-5 sm:p-8">
-            <div className="flex items-center justify-between gap-4 border-b border-muted/40 pb-4">
-              <h2 id="trip-popup-heading" className="text-xl font-semibold">
+          <section className="m3-dialog-content">
+            <div className="m3-dialog-heading">
+              <h2 id="trip-popup-heading" className="m3-title">
                 {popupType === "create-trip" ? "Новая поездка" : "Поездка"}
               </h2>
-              <button
-                type="button"
-                onClick={closePopup}
-                className="cursor-pointer rounded-lg px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent"
-              >
+              <Button type="button" onClick={closePopup} variant="text">
                 Закрыть
-              </button>
+              </Button>
             </div>
             {popupType === "create-trip" ? (
               <CreateTripForm onSuccess={closePopup} />
             ) : !Number.isInteger(selectedTripId) || selectedTripId <= 0 ? (
               <FormError>Некорректный ID поездки.</FormError>
             ) : selected.isPending ? (
-              <p role="status">Загружаем поездку…</p>
+              <StatusMessage loading>Загружаем поездку…</StatusMessage>
             ) : selected.isError ? (
               <FormError>Не удалось загрузить поездку.</FormError>
             ) : selected.data ? (
               <>
                 {selected.data.role === "owner" ? (
                   <>
-                    <p className="text-sm text-foreground/70">
-                      Роль: {selected.data.role}
-                    </p>
                     <UpdateTripForm
                       key={`update-trip-${selected.data.trip.id}`}
                       trip={selected.data.trip}
+                      events={selected.data.timeline}
                       onSuccess={closePopup}
                     />
                   </>
@@ -119,7 +121,7 @@ export function TripsPage() {
                 </TextLink>
               </>
             ) : (
-              <p>Поездка не найдена.</p>
+              <StatusMessage>Поездка не найдена.</StatusMessage>
             )}
           </section>
         </Dialog>

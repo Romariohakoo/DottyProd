@@ -1,5 +1,7 @@
 "use client";
 
+import { Button, DateTimeText } from "@shared/ui";
+
 import type { Event } from "../model";
 
 interface EventListProps {
@@ -9,16 +11,24 @@ interface EventListProps {
 
 export function EventList({ events, onSelect }: EventListProps) {
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="m3-card-list">
       {events.map((event) => (
-        <li key={event.id}>
-          <button
+        <li key={event.id} className="min-w-0">
+          <Button
             type="button"
             onClick={() => onSelect(event.id)}
-            className="w-full cursor-pointer rounded-lg border border-muted/60 bg-muted/15 px-4 py-3 text-left transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            variant="card"
           >
-            {event.title}
-          </button>
+            <span className="m3-card-content">
+              <span className="m3-badge bg-surface-bright text-primary">
+                {event.type === "activity" ? "Активность" : "Перемещение"}
+              </span>
+              <span>{event.title}</span>
+              <span className="m3-card-meta">
+                <DateTimeText value={event.startAt} />
+              </span>
+            </span>
+          </Button>
         </li>
       ))}
     </ul>

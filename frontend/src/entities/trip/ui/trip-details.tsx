@@ -1,3 +1,5 @@
+import { formatDate } from "@shared/lib";
+
 import type { TripDetail } from "../model";
 
 interface TripDetailsProps {
@@ -5,29 +7,59 @@ interface TripDetailsProps {
 }
 
 export function TripDetails({ detail }: TripDetailsProps) {
-  const { trip, role } = detail;
+  const { trip } = detail;
   return (
-    <dl className="grid gap-2 break-words text-sm">
-      <dt className="text-foreground/70">ID</dt>
-      <dd>{trip.id}</dd>
-      <dt className="text-foreground/70">Название</dt>
-      <dd>{trip.title}</dd>
-      <dt className="text-foreground/70">Страна</dt>
-      <dd>{trip.country}</dd>
-      <dt className="text-foreground/70">Начало</dt>
-      <dd>{trip.startDate}</dd>
-      <dt className="text-foreground/70">Окончание</dt>
-      <dd>{trip.endDate}</dd>
-      <dt className="text-foreground/70">Описание</dt>
-      <dd>{trip.description ?? "Не указано"}</dd>
-      <dt className="text-foreground/70">Обложка</dt>
-      <dd>{trip.coverUrl ?? "Не указана"}</dd>
-      <dt className="text-foreground/70">Роль</dt>
-      <dd>{role}</dd>
-      <dt className="text-foreground/70">Создана</dt>
-      <dd>{trip.createdAt}</dd>
-      <dt className="text-foreground/70">Изменена</dt>
-      <dd>{trip.updatedAt}</dd>
-    </dl>
+    <div className="grid min-w-0 gap-4">
+      <section className="m3-surface">
+        <h2 className="m3-title">О поездке</h2>
+        <dl className="m3-details mt-4">
+          <div className="m3-detail-row">
+            <dt>Название</dt>
+            <dd>{trip.title}</dd>
+          </div>
+          <div className="m3-detail-row">
+            <dt>Страна</dt>
+            <dd>{trip.country}</dd>
+          </div>
+          <div className="m3-detail-row">
+            <dt>Начало</dt>
+            <dd>
+              <time dateTime={trip.startDate}>
+                {formatDate(trip.startDate)}
+              </time>
+            </dd>
+          </div>
+          <div className="m3-detail-row">
+            <dt>Окончание</dt>
+            <dd>
+              <time dateTime={trip.endDate}>{formatDate(trip.endDate)}</time>
+            </dd>
+          </div>
+          <div className="m3-detail-row">
+            <dt>Описание</dt>
+            <dd className="whitespace-pre-wrap">
+              {trip.description ?? "Не указано"}
+            </dd>
+          </div>
+          <div className="m3-detail-row">
+            <dt>Обложка</dt>
+            <dd>{trip.coverUrl ?? "Не указана"}</dd>
+          </div>
+        </dl>
+      </section>
+      <section className="m3-surface">
+        <h2 className="m3-title">Информация о поездке</h2>
+        <dl className="m3-details mt-4">
+          <div className="m3-detail-row">
+            <dt>Изменена</dt>
+            <dd>
+              <time dateTime={trip.updatedAt}>
+                {formatDate(trip.updatedAt)}
+              </time>
+            </dd>
+          </div>
+        </dl>
+      </section>
+    </div>
   );
 }

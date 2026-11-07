@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import type { User } from "@entities/user";
-import { FormError, FormField, SubmitButton } from "@shared/ui";
+import { FormError, FormField, StatusMessage, SubmitButton } from "@shared/ui";
 
 import { useUpdateUserMutation } from "../model/use-update-user-mutation";
 import { type UpdateUserValues, updateUserSchema } from "../model/validation";
@@ -34,17 +34,19 @@ export function UpdateUserForm({ user }: UpdateUserFormProps) {
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="flex flex-col gap-5"
+      className="m3-form"
       noValidate
     >
-      <FormField
-        label="Имя"
-        type="text"
-        autoComplete="name"
-        placeholder="Введите имя"
-        error={errors.name?.message}
-        {...register("name")}
-      />
+      <div className="m3-form-section">
+        <FormField
+          label="Имя"
+          type="text"
+          autoComplete="name"
+          placeholder="Введите имя"
+          error={errors.name?.message}
+          {...register("name")}
+        />
+      </div>
 
       {error ? (
         <FormError>
@@ -52,11 +54,7 @@ export function UpdateUserForm({ user }: UpdateUserFormProps) {
         </FormError>
       ) : null}
 
-      {isSuccess ? (
-        <p role="status" className="text-sm text-foreground/70">
-          Изменения сохранены
-        </p>
-      ) : null}
+      {isSuccess ? <StatusMessage>Изменения сохранены</StatusMessage> : null}
 
       <SubmitButton pending={isPending} pendingLabel="Сохраняем…">
         Сохранить

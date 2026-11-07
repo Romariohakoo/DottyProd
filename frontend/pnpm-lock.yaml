@@ -54,6 +54,9 @@ importers:
       '@types/react-dom':
         specifier: ^19
         version: 19.3.0(@types/react@19.3.0)
+      '@yandex/ymaps3-types':
+        specifier: ^1.0.21772363
+        version: 1.0.21772363(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)
       babel-plugin-react-compiler:
         specifier: 1.0.0
         version: 1.0.0
@@ -1036,6 +1039,20 @@ packages:
     resolution: {integrity: sha512-nAB74NfSNKknqQ1RrYj6uz8FcXEomu/MATJZxh/x+BArzN2U3JbOYC0APYzUIGhVY3m5hRxA8VPNdPBoG8txlA==}
     cpu: [x64]
     os: [win32]
+
+  '@yandex/ymaps3-types@1.0.21772363':
+    resolution: {integrity: sha512-YV6zsY0voVXpBrSK57bWtKAVeRvQYxhy+258KYIDS9Z/ZvXBF06TLbKdkp/gok0b7q/JXQgKL1jSZteUkHqqSQ==}
+    peerDependencies:
+      '@types/react': ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      '@types/react-dom': ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      '@vue/runtime-core': '3'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+      '@vue/runtime-core':
+        optional: true
 
   acorn-jsx@5.3.2:
     resolution: {integrity: sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==}
@@ -3312,6 +3329,11 @@ snapshots:
 
   '@unrs/resolver-binding-win32-x64-msvc@1.12.2':
     optional: true
+
+  '@yandex/ymaps3-types@1.0.21772363(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)':
+    optionalDependencies:
+      '@types/react': 19.3.0
+      '@types/react-dom': 19.3.0(@types/react@19.3.0)
 
   acorn-jsx@5.3.2(acorn@8.19.0):
     dependencies:

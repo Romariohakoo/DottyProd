@@ -1,23 +1,28 @@
-"use client";
+import { Button } from "./button";
 
 interface SubmitButtonProps {
   pending: boolean;
+  disabled?: boolean;
   pendingLabel: string;
   children: string;
 }
 
 export function SubmitButton({
   pending,
+  disabled = false,
   pendingLabel,
   children,
 }: SubmitButtonProps) {
   return (
-    <button
+    <Button
       type="submit"
-      disabled={pending}
-      className="mt-2 w-full cursor-pointer rounded-lg bg-accent px-5 py-3 text-base font-semibold text-foreground transition-colors enabled:hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={pending || disabled}
+      aria-busy={pending}
+      className={`mt-2 w-full ${pending ? "m3-loading" : ""}`}
     >
-      {pending ? pendingLabel : children}
-    </button>
+      <span role={pending ? "status" : undefined}>
+        {pending ? pendingLabel : children}
+      </span>
+    </Button>
   );
 }

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { users } from "@shared/config";
-import { FormError, FormField, SubmitButton } from "@shared/ui";
+import { Button, FormError, FormField, SubmitButton } from "@shared/ui";
 
 import { startTelegramLogin } from "../api/login";
 import { useLoginMutation } from "../model/use-login-mutation";
@@ -55,25 +55,27 @@ export function LoginForm() {
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="flex flex-col gap-5"
+      className="m3-form"
       noValidate
     >
-      <FormField
-        label="Email"
-        type="email"
-        autoComplete="email"
-        placeholder="name@example.com"
-        error={errors.email?.message}
-        {...register("email")}
-      />
-      <FormField
-        label="Пароль"
-        type="password"
-        autoComplete="current-password"
-        placeholder="Введите пароль"
-        error={errors.password?.message}
-        {...register("password")}
-      />
+      <div className="m3-form-section">
+        <FormField
+          label="Email"
+          type="email"
+          autoComplete="email"
+          placeholder="name@example.com"
+          error={errors.email?.message}
+          {...register("email")}
+        />
+        <FormField
+          label="Пароль"
+          type="password"
+          autoComplete="current-password"
+          placeholder="Введите пароль"
+          error={errors.password?.message}
+          {...register("password")}
+        />
+      </div>
 
       {error ? (
         <FormError>

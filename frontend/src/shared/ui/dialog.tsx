@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 interface DialogProps {
   children: React.ReactNode;
   isDismissable?: boolean;
+  size?: "default" | "compact";
   labelledBy: string;
   onClose: () => void;
 }
@@ -12,53 +13,64 @@ interface DialogProps {
 export function Dialog({
   children,
   isDismissable = true,
+  size = "default",
   labelledBy,
   onClose,
 }: DialogProps) {
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const backdropPointer = useRef(false);
 
   useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previouslyFocused = document.activeElement;
     const dialog = dialogRef.current;
-    const firstFocusable = dialog?.querySelector<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    firstFocusable?.focus();
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (isDismissable && event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", closeOnEscape);
+    const previousOverflow = document.body.style.overflow;
+    dialog?.showModal();
     document.body.style.overflow = "hidden";
-
     return () => {
-      document.removeEventListener("keydown", closeOnEscape);
-      document.body.style.overflow = "";
-      previouslyFocused?.focus();
+      dialog?.close();
+      document.body.style.overflow = previousOverflow;
+      if (
+        previouslyFocused instanceof HTMLElement &&
+        previouslyFocused.isConnected
+      )
+        previouslyFocused.focus();
     };
-  }, [isDismissable, onClose]);
+  }, []);
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto overscroll-contain bg-background/80 p-3 backdrop-blur-sm sm:p-5"
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={labelledBy}
+      className={`m3-dialog ${size === "compact" ? "m3-dialog--compact" : ""}`}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (isDismissable) onClose();
+      }}
       onPointerDown={(event) => {
-        if (isDismissable && event.target === event.currentTarget) {
+        const rect = event.currentTarget.getBoundingClientRect();
+        backdropPointer.current =
+          event.target === event.currentTarget &&
+          (event.clientX < rect.left ||
+            event.clientX > rect.right ||
+            event.clientY < rect.top ||
+            event.clientY > rect.bottom);
+      }}
+      onClick={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        if (
+          isDismissable &&
+          backdropPointer.current &&
+          event.target === event.currentTarget &&
+          (event.clientX < rect.left ||
+            event.clientX > rect.right ||
+            event.clientY < rect.top ||
+            event.clientY > rect.bottom)
+        )
           onClose();
-        }
+        backdropPointer.current = false;
       }}
     >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={labelledBy}
-        className="max-h-[calc(100dvh-1.5rem)] w-full min-w-0 max-w-3xl overflow-y-auto overscroll-contain rounded-xl border border-muted/60 bg-background text-foreground shadow-2xl sm:max-h-[calc(100dvh-2.5rem)]"
-      >
-        {children}
-      </div>
-    </div>
+      {children}
+    </dialog>
   );
 }

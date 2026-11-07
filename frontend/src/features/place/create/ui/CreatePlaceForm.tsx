@@ -3,10 +3,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
-import { FormError, FormField, SubmitButton } from "@shared/ui";
+import { Button, FormError, FormField } from "@shared/ui";
 
 import { useCreatePlaceMutation } from "../model/use-create-place-mutation";
 import { type CreatePlaceValues, createPlaceSchema } from "../model/validation";
+import { PlaceAddressSearch } from "./PlaceAddressSearch";
 
 interface CreatePlaceFormProps {
   tripId: number;
@@ -15,15 +16,16 @@ interface CreatePlaceFormProps {
 
 export function CreatePlaceForm({ tripId, onSuccess }: CreatePlaceFormProps) {
   const { mutate, isPending, error } = useCreatePlaceMutation(tripId);
+  const form = useForm<CreatePlaceValues>({
+    defaultValues: { name: "", address: "", latitude: NaN, longitude: NaN },
+    mode: "onTouched",
+    resolver: zodResolver(createPlaceSchema),
+  });
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<CreatePlaceValues>({
-    defaultValues: { name: "", address: "" },
-    mode: "onTouched",
-    resolver: zodResolver(createPlaceSchema),
-  });
+  } = form;
 
   const onSubmit = (values: CreatePlaceValues) => {
     mutate(
@@ -41,7 +43,7 @@ export function CreatePlaceForm({ tripId, onSuccess }: CreatePlaceFormProps) {
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="flex flex-col gap-5"
+      className="m3-form"
       noValidate
     >
       <fieldset disabled={isPending} className="flex flex-col gap-5">
@@ -52,31 +54,7 @@ export function CreatePlaceForm({ tripId, onSuccess }: CreatePlaceFormProps) {
           error={errors.name?.message}
           {...register("name")}
         />
-        <FormField
-          label="Адрес (необязательно)"
-          type="text"
-          maxLength={1000}
-          error={errors.address?.message}
-          {...register("address")}
-        />
-        <FormField
-          label="Широта"
-          type="number"
-          step="any"
-          min={-90}
-          max={90}
-          error={errors.latitude?.message}
-          {...register("latitude", { valueAsNumber: true })}
-        />
-        <FormField
-          label="Долгота"
-          type="number"
-          step="any"
-          min={-180}
-          max={180}
-          error={errors.longitude?.message}
-          {...register("longitude", { valueAsNumber: true })}
-        />
+        <PlaceAddressSearch form={form} />
       </fieldset>
 
       {error ? (
@@ -85,9 +63,17 @@ export function CreatePlaceForm({ tripId, onSuccess }: CreatePlaceFormProps) {
         </FormError>
       ) : null}
 
-      <SubmitButton pending={isPending} pendingLabel="Создаём место…">
-        Создать место
-      </SubmitButton>
+      <Button
+        type="submit"
+        variant="outlined"
+        disabled={isPending}
+        aria-busy={isPending}
+        className={`mt-2 w-full ${isPending ? "m3-loading" : ""}`}
+      >
+        <span role={isPending ? "status" : undefined}>
+          {isPending ? "Создаём место…" : "Создать место"}
+        </span>
+      </Button>
     </form>
   );
 }

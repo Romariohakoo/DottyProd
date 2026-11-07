@@ -1,26 +1,51 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import Script from "next/script";
 
 import { QueryProvider } from "@app/index";
 import { AuthLinks, UserBadge } from "@entities/user";
 import { LogoutButton } from "@features/user/logout";
+import { YANDEX_MAPS_API_KEY } from "@shared/config";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NextJS template",
-  description: "Template for NextJS projects",
+  title: "TravelHub — ваши путешествия",
+  description: "Поездки, места и события вашего путешествия в одном месте.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="ru" className="h-full antialiased">
       <body className="min-h-full">
+        {YANDEX_MAPS_API_KEY ? (
+          <Script
+            id="yandex-maps-sdk"
+            src={`https://api-maps.yandex.ru/v3/?apikey=${encodeURIComponent(YANDEX_MAPS_API_KEY)}&lang=ru_RU`}
+            strategy="beforeInteractive"
+          />
+        ) : null}
         <QueryProvider>
-          <header className="border-b border-muted/50 bg-muted/10 backdrop-blur-sm">
-            <div className="mx-auto flex min-h-16 w-full max-w-5xl items-center justify-end gap-3 px-4 md:px-8">
-              <UserBadge />
-              <LogoutButton />
-              <AuthLinks />
+          <a href="#main-content" className="m3-skip-link">
+            К содержимому
+          </a>
+          <header className="m3-header">
+            <div className="m3-header-content">
+              <Link
+                href="/"
+                className="m3-brand"
+                aria-label="TravelHub — главная"
+              >
+                <span className="m3-brand-mark" aria-hidden="true">
+                  ↗
+                </span>
+                TravelHub
+              </Link>
+              <div className="m3-header-actions">
+                <UserBadge />
+                <LogoutButton />
+                <AuthLinks />
+              </div>
             </div>
           </header>
           {children}

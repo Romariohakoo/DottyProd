@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   EventDetails,
   EventList,
+  EventTimeline,
   useEventQuery,
   useEventsQuery,
 } from "@entities/event";
@@ -24,7 +25,9 @@ import { DeletePlaceButton } from "@features/place/delete";
 import { UpdatePlaceForm } from "@features/place/update";
 import { DeleteTripButton } from "@features/trip/delete";
 import { UpdateTripForm } from "@features/trip/update";
-import { Dialog, FormError, TextLink } from "@shared/ui";
+import { formatDate } from "@shared/lib";
+import { Button, Dialog, FormError, StatusMessage, TextLink } from "@shared/ui";
+import { TripMap } from "@widgets/trip-map";
 
 interface TripPageProps {
   tripId: number;
@@ -88,61 +91,90 @@ export function TripPage({ tripId }: TripPageProps) {
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:px-8">
+    <main id="main-content" className="m3-page">
       <TextLink href="/trips">Все поездки</TextLink>
       {!Number.isInteger(tripId) || tripId <= 0 ? (
         <FormError>Некорректный ID поездки.</FormError>
       ) : detail.isPending ? (
-        <p role="status">Загружаем поездку…</p>
+        <StatusMessage loading>Загружаем поездку…</StatusMessage>
       ) : detail.isError ? (
         <FormError>
           Не удалось загрузить поездку. Попробуйте обновить страницу.
         </FormError>
       ) : detail.data ? (
-        <div className="flex flex-col gap-6 sm:flex-row">
-          <nav
-            aria-label="Разделы поездки"
-            className="flex shrink-0 flex-col gap-2"
-          >
+        <div className="m3-trip-shell">
+          <nav aria-label="Разделы поездки" className="m3-tabs">
             {TABS.map((tab) => (
-              <button
+              <Button
                 key={tab.id}
                 type="button"
                 aria-current={activeTab === tab.id ? "page" : undefined}
                 onClick={() => openTab(tab.id)}
-                className="cursor-pointer rounded-lg border border-muted/60 px-4 py-3 text-left transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-accent aria-[current=page]:bg-accent/20"
+                variant="nav"
               >
                 {tab.label}
-              </button>
+              </Button>
             ))}
           </nav>
+          <header className="m3-page-heading">
+            <div className="min-w-0 space-y-4">
+              <p className="m3-eyebrow">ВАШЕ ПУТЕШЕСТВИЕ</p>
+              <h1 className="m3-headline">{detail.data.trip.title}</h1>
+              <div className="flex flex-wrap gap-2">
+                <span className="m3-badge">{detail.data.trip.country}</span>
+                <span className="m3-badge">
+                  {formatDate(detail.data.trip.startDate)} —{" "}
+                  {formatDate(detail.data.trip.endDate)}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="tonal"
+              onClick={() => openPopup("trip", tripId)}
+              className="w-full shrink-0 sm:w-auto"
+            >
+              {detail.data.role === "owner" ? "Изменить поездку" : "О поездке"}
+            </Button>
+          </header>
+
           <section
             className="min-w-0 flex-1 space-y-5"
             aria-label={TABS.find((tab) => tab.id === activeTab)?.label}
           >
             {activeTab === "base" ? (
-              <h1 className="text-2xl font-semibold">
-                {detail.data.trip.title}
-              </h1>
+              <div className="grid min-w-0 gap-6 lg:grid-cols-3">
+                <div className="min-w-0 lg:col-span-2">
+                  <TripDetails detail={detail.data} />
+                </div>
+                <aside className="m3-surface flex flex-col gap-4 bg-tertiary-container text-on-tertiary-container self-start">
+                  <p className="m3-label">Места и события</p>
+                  <p className="m3-title">Соберите свою историю поездки</p>
+                  <p>
+                    Сохраните важные места и запланируйте события в разделах
+                    путешествия.
+                  </p>
+                </aside>
+              </div>
             ) : null}
             {activeTab === "places" ? (
               <>
                 <h1 className="text-2xl font-semibold">Места</h1>
+                <TripMap places={detail.data.places} />
                 {detail.data.role !== "viewer" ? (
-                  <button
+                  <Button
                     type="button"
+                    variant="outlined"
                     onClick={() => openPopup("create-place")}
-                    className="cursor-pointer rounded-lg bg-accent px-5 py-3 font-semibold hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                   >
                     Создать место
-                  </button>
+                  </Button>
                 ) : null}
                 {places.isPending ? (
-                  <p role="status">Загружаем места…</p>
+                  <StatusMessage loading>Загружаем места…</StatusMessage>
                 ) : places.isError ? (
                   <FormError>Не удалось загрузить места.</FormError>
                 ) : !places.data?.length ? (
-                  <p className="text-foreground/70">Мест пока нет.</p>
+                  <StatusMessage>Мест пока нет.</StatusMessage>
                 ) : (
                   <PlaceList
                     places={places.data}
@@ -153,40 +185,57 @@ export function TripPage({ tripId }: TripPageProps) {
             ) : null}
             {activeTab === "events" ? (
               <>
-                <h1 className="text-2xl font-semibold">События</h1>
-                {detail.data.role !== "viewer" ? (
-                  <button
-                    type="button"
-                    onClick={() => openPopup("create-event")}
-                    className="cursor-pointer rounded-lg bg-accent px-5 py-3 font-semibold hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                  >
-                    Создать событие
-                  </button>
-                ) : null}
+                <div className="m3-section-heading">
+                  <h2 className="m3-title">События</h2>
+                  {detail.data.role !== "viewer" ? (
+                    <Button
+                      type="button"
+                      onClick={() => openPopup("create-event")}
+                      className="w-fit"
+                    >
+                      Создать событие
+                    </Button>
+                  ) : null}
+                </div>
                 {events.isPending ? (
-                  <p role="status">Загружаем события…</p>
+                  <StatusMessage loading>Загружаем события…</StatusMessage>
                 ) : events.isError ? (
                   <FormError>Не удалось загрузить события.</FormError>
-                ) : !events.data?.length ? (
-                  <p className="text-foreground/70">Событий пока нет.</p>
                 ) : (
-                  <EventList
-                    events={events.data}
-                    onSelect={(id) => openPopup("event", id)}
-                  />
+                  <>
+                    <EventTimeline
+                      events={events.data ?? []}
+                      startDate={detail.data.trip.startDate}
+                      endDate={detail.data.trip.endDate}
+                      isPopupOpen={isSelectedPopup || isCreatePopup}
+                      onSelect={
+                        detail.data.role !== "viewer"
+                          ? (id) => openPopup("event", id)
+                          : undefined
+                      }
+                    />
+                    {!events.data?.length ? (
+                      <StatusMessage>Событий пока нет.</StatusMessage>
+                    ) : (
+                      <EventList
+                        events={events.data}
+                        onSelect={(id) => openPopup("event", id)}
+                      />
+                    )}
+                  </>
                 )}
               </>
             ) : null}
           </section>
         </div>
       ) : (
-        <p>Поездка не найдена.</p>
+        <StatusMessage>Поездка не найдена.</StatusMessage>
       )}
       {isSelectedPopup || isCreatePopup ? (
         <Dialog labelledBy="entity-popup-heading" onClose={closePopup}>
-          <section className="flex w-full min-w-0 flex-col gap-6 p-5 sm:p-8">
-            <div className="flex items-center justify-between gap-4 border-b border-muted/40 pb-4">
-              <h2 id="entity-popup-heading" className="text-xl font-semibold">
+          <section className="m3-dialog-content">
+            <div className="m3-dialog-heading">
+              <h2 id="entity-popup-heading" className="m3-title">
                 {popupType === "create-place"
                   ? "Новое место"
                   : popupType === "create-event"
@@ -197,17 +246,13 @@ export function TripPage({ tripId }: TripPageProps) {
                         ? "Событие"
                         : "Поездка"}
               </h2>
-              <button
-                type="button"
-                onClick={closePopup}
-                className="cursor-pointer rounded-lg px-3 py-2 focus-visible:outline-2 focus-visible:outline-accent"
-              >
+              <Button type="button" onClick={closePopup} variant="text">
                 Закрыть
-              </button>
+              </Button>
             </div>
             {isCreatePopup ? (
               detail.isPending ? (
-                <p role="status">Загружаем данные…</p>
+                <StatusMessage loading>Загружаем данные…</StatusMessage>
               ) : detail.isError || !detail.data ? (
                 <FormError>Не удалось загрузить поездку.</FormError>
               ) : detail.data.role === "viewer" ? (
@@ -217,6 +262,8 @@ export function TripPage({ tripId }: TripPageProps) {
               ) : (
                 <CreateEventForm
                   tripId={tripId}
+                  trip={detail.data.trip}
+                  events={detail.data.timeline}
                   places={detail.data.places}
                   onSuccess={closePopup}
                 />
@@ -224,7 +271,7 @@ export function TripPage({ tripId }: TripPageProps) {
             ) : !Number.isInteger(selectedId) || selectedId <= 0 ? (
               <FormError>Некорректный ID.</FormError>
             ) : detail.isPending ? (
-              <p role="status">Загружаем данные…</p>
+              <StatusMessage loading>Загружаем данные…</StatusMessage>
             ) : detail.isError ? (
               <FormError>Не удалось загрузить данные.</FormError>
             ) : popupType === "place" ? (
@@ -250,7 +297,7 @@ export function TripPage({ tripId }: TripPageProps) {
                   ) : null}
                 </>
               ) : (
-                <p>Место не найдено.</p>
+                <StatusMessage>Место не найдено.</StatusMessage>
               )
             ) : popupType === "event" ? (
               selectedEvent.data ? (
@@ -259,6 +306,8 @@ export function TripPage({ tripId }: TripPageProps) {
                     <UpdateEventForm
                       key={`update-event-${selectedEvent.data.id}`}
                       tripId={tripId}
+                      trip={detail.data.trip}
+                      events={detail.data.timeline}
                       event={selectedEvent.data}
                       places={detail.data.places}
                       onSuccess={closePopup}
@@ -276,17 +325,15 @@ export function TripPage({ tripId }: TripPageProps) {
                   ) : null}
                 </>
               ) : (
-                <p>Событие не найдено.</p>
+                <StatusMessage>Событие не найдено.</StatusMessage>
               )
             ) : detail.data ? (
               <>
                 {detail.data.role === "owner" ? (
                   <>
-                    <p className="text-sm text-foreground/70">
-                      Роль: {detail.data.role}
-                    </p>
                     <UpdateTripForm
                       trip={detail.data.trip}
+                      events={detail.data.timeline}
                       onSuccess={closePopup}
                     />
                   </>
@@ -298,7 +345,7 @@ export function TripPage({ tripId }: TripPageProps) {
                 ) : null}
               </>
             ) : (
-              <p>Поездка не найдена.</p>
+              <StatusMessage>Поездка не найдена.</StatusMessage>
             )}
           </section>
         </Dialog>

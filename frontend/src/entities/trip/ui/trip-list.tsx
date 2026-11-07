@@ -1,5 +1,8 @@
 "use client";
 
+import { formatDate } from "@shared/lib";
+import { Button } from "@shared/ui";
+
 import type { TripCard } from "../model";
 
 interface TripListProps {
@@ -9,16 +12,27 @@ interface TripListProps {
 
 export function TripList({ trips, onSelect }: TripListProps) {
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="m3-card-list">
       {trips.map((trip) => (
-        <li key={trip.id}>
-          <button
+        <li key={trip.id} className="min-w-0">
+          <Button
             type="button"
             onClick={() => onSelect(trip.id)}
-            className="w-full cursor-pointer rounded-lg border border-muted/60 bg-muted/15 px-4 py-3 text-left transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            variant="card"
           >
-            {trip.title}
-          </button>
+            <span className="m3-card-content self-stretch">
+              <span className="m3-card-meta">{trip.country}</span>
+              <span className="m3-title">{trip.title}</span>
+              <span className="m3-card-meta mt-auto">
+                <time dateTime={trip.startDate}>
+                  {formatDate(trip.startDate)}
+                </time>
+                {" — "}
+                <time dateTime={trip.endDate}>{formatDate(trip.endDate)}</time>
+              </span>
+              <span className="m3-card-meta">Роль: {trip.role}</span>
+            </span>
+          </Button>
         </li>
       ))}
     </ul>

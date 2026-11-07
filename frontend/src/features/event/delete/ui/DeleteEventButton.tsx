@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { FormError } from "@shared/ui";
+import { Button, FormError } from "@shared/ui";
 
 import { useDeleteEventMutation } from "../model/use-delete-event-mutation";
 
@@ -24,45 +24,48 @@ export function DeleteEventButton({
   );
 
   return (
-    <div className="flex flex-col gap-3 border-t border-muted/60 pt-5">
+    <div className="m3-group border-error-container">
       {isConfirming ? (
         <>
-          <p className="text-sm text-foreground/80">
+          <p className="m3-support text-on-surface">
             Удалить событие? Это действие нельзя отменить. Места поездки
             сохранятся.
           </p>
-          <div className="flex flex-wrap gap-3">
-            <button
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button
               type="button"
               disabled={isPending}
+              aria-busy={isPending}
               onClick={() =>
                 mutate(undefined, { onSuccess: () => onSuccess?.() })
               }
-              className="cursor-pointer rounded-lg bg-accent px-4 py-3 text-sm font-semibold transition-colors enabled:hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+              variant="danger"
             >
-              {isPending ? "Удаляем…" : "Подтвердить удаление"}
-            </button>
-            <button
+              <span role={isPending ? "status" : undefined}>
+                {isPending ? "Удаляем…" : "Подтвердить удаление"}
+              </span>
+            </Button>
+            <Button
               type="button"
               disabled={isPending}
               onClick={() => {
                 setIsConfirming(false);
                 reset();
               }}
-              className="cursor-pointer rounded-lg border border-muted/60 px-4 py-3 text-sm transition-colors enabled:hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+              variant="outlined"
             >
               Отмена
-            </button>
+            </Button>
           </div>
         </>
       ) : (
-        <button
+        <Button
           type="button"
           onClick={() => setIsConfirming(true)}
-          className="cursor-pointer rounded-lg border border-muted/60 px-4 py-3 text-sm transition-colors hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          variant="danger"
         >
           Удалить событие
-        </button>
+        </Button>
       )}
       {error ? (
         <FormError>Не удалось удалить событие. Попробуйте ещё раз.</FormError>

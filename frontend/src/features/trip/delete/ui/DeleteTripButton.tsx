@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { FormError } from "@shared/ui";
+import { Button, FormError } from "@shared/ui";
 
 import { useDeleteTripMutation } from "../model";
 
@@ -16,43 +16,48 @@ export function DeleteTripButton({ tripId, onSuccess }: DeleteTripButtonProps) {
   const { mutate, isPending, error, reset } = useDeleteTripMutation(tripId);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="m3-form rounded-large bg-surface-container-low p-6">
       {isConfirming ? (
         <>
-          <p className="text-sm text-foreground/80">
+          <p className="m3-label text-error">
             Удалить поездку со всеми её местами и событиями? Отменить удаление
             нельзя.
           </p>
-          <div className="flex flex-wrap gap-3">
-            <button
+          <div className="grid gap-3 sm:flex sm:flex-wrap">
+            <Button
               type="button"
               disabled={isPending}
               onClick={() => mutate(undefined, { onSuccess })}
-              className="cursor-pointer rounded-lg border border-muted/60 bg-transparent px-3 py-2 text-sm font-medium text-foreground transition-colors enabled:hover:border-accent enabled:hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+              aria-busy={isPending}
+              variant="danger"
+              className={isPending ? "m3-loading" : ""}
             >
-              {isPending ? "Удаляем поездку…" : "Подтвердить удаление"}
-            </button>
-            <button
+              <span role={isPending ? "status" : undefined}>
+                {isPending ? "Удаляем поездку…" : "Подтвердить удаление"}
+              </span>
+            </Button>
+            <Button
               type="button"
               disabled={isPending}
               onClick={() => {
                 setIsConfirming(false);
                 reset();
               }}
-              className="cursor-pointer rounded-lg border border-muted/60 bg-transparent px-3 py-2 text-sm font-medium text-foreground transition-colors enabled:hover:border-accent enabled:hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+              variant="outlined"
             >
               Отмена
-            </button>
+            </Button>
           </div>
         </>
       ) : (
-        <button
+        <Button
           type="button"
           onClick={() => setIsConfirming(true)}
-          className="cursor-pointer rounded-lg border border-muted/60 bg-transparent px-3 py-2 text-sm font-medium text-foreground transition-colors enabled:hover:border-accent enabled:hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+          variant="danger"
+          className="w-full sm:w-fit"
         >
           Удалить поездку
-        </button>
+        </Button>
       )}
 
       {error ? (

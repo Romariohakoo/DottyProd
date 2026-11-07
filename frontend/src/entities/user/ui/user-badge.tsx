@@ -10,9 +10,15 @@ export function UserBadge() {
   return (
     <span
       aria-label={`Пользователь: ${user.username}`}
-      className="rounded-lg border border-accent/60 bg-accent/15 px-3 py-2 text-sm font-medium text-foreground"
+      className="m3-badge max-w-full"
     >
-      {user.username}
+      <span
+        aria-hidden="true"
+        className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary-container font-bold text-on-primary-container"
+      >
+        {user.username.slice(0, 1).toUpperCase()}
+      </span>
+      <span className="min-w-0 break-words">{user.username}</span>
     </span>
   );
 }

@@ -1,12 +1,20 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 
 import type { Event } from "@entities/event";
 import type { Place } from "@entities/place";
+import type { Trip } from "@entities/trip";
 import type { PlaceInputDto, PlaceRefDto } from "@shared/api";
-import { FormError, FormField } from "@shared/ui";
+import { getEventScheduleError } from "@shared/lib";
+import {
+  Button,
+  DatePicker,
+  FormError,
+  FormField,
+  SelectField,
+} from "@shared/ui";
 
 import { useUpdateEventMutation } from "../model/use-update-event-mutation";
 import { type UpdateEventValues, updateEventSchema } from "../model/validation";
@@ -14,6 +22,8 @@ import { PlaceChoiceFields } from "./PlaceChoiceFields";
 
 interface UpdateEventFormProps {
   tripId: number;
+  trip: Trip;
+  events: Event[];
   event: Event;
   places: Place[];
   onSuccess?: () => void;
@@ -54,6 +64,8 @@ const toLocalDateTime = (value: string): string => {
 
 export function UpdateEventForm({
   tripId,
+  trip,
+  events,
   event,
   places,
   onSuccess,
@@ -85,7 +97,29 @@ export function UpdateEventForm({
     formState: { errors, isValid, isDirty },
   } = form;
 
+  const [startAt, endAt] = useWatch({
+    control: form.control,
+    name: ["startAt", "endAt"],
+  });
+  const scheduleError = getEventScheduleError(
+    startAt,
+    endAt,
+    trip,
+    events,
+    event.id,
+  );
+
   const onSubmit = (values: UpdateEventValues) => {
+    if (
+      getEventScheduleError(
+        values.startAt,
+        values.endAt,
+        trip,
+        events,
+        event.id,
+      )
+    )
+      return;
     if (!isValid || !isDirty || isPending) return;
     const common = {
       title: values.title.trim(),
@@ -119,67 +153,102 @@ export function UpdateEventForm({
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="flex flex-col gap-5"
+      className="m3-form"
       noValidate
     >
-      <fieldset disabled={isPending} className="flex min-w-0 flex-col gap-5">
-        <dl className="grid gap-2 break-words text-sm">
-          <dt className="text-foreground/70">ID</dt>
-          <dd>{event.id}</dd>
-          <dt className="text-foreground/70">Поездка</dt>
-          <dd>{tripId}</dd>
-          <dt className="text-foreground/70">Тип</dt>
-          <dd>{event.type}</dd>
-          <dt className="text-foreground/70">Автор</dt>
-          <dd>{event.createdBy}</dd>
-        </dl>
-        <FormField
-          label="Название"
-          type="text"
-          error={errors.title?.message}
-          {...register("title")}
-        />
-        <FormField
-          label="Описание (необязательно)"
-          type="text"
-          error={errors.description?.message}
-          {...register("description")}
-        />
-        <p className="text-sm text-foreground/70">
-          Дата и время указаны в часовом поясе вашего устройства.
-        </p>
-        <div className="grid min-w-0 gap-5 sm:grid-cols-2">
+      <fieldset disabled={isPending} className="m3-form">
+        <div className="m3-form-section" role="group" aria-label="О событии">
+          <h3 className="m3-title">О событии</h3>
+          <p className="m3-badge self-start">
+            {event.type === "activity" ? "Активность" : "Перемещение"}
+          </p>
           <FormField
-            label="Начало"
-            type="datetime-local"
-            step="1"
-            error={errors.startAt?.message}
-            {...register("startAt")}
+            label="Название"
+            type="text"
+            error={errors.title?.message}
+            {...register("title")}
           />
           <FormField
-            label="Окончание (необязательно)"
-            type="datetime-local"
-            step="1"
-            error={errors.endAt?.message}
-            {...register("endAt")}
+            label="Описание (необязательно)"
+            type="text"
+            error={errors.description?.message}
+            {...register("description")}
           />
         </div>
-        <FormField
-          label="Ссылка на бронь (необязательно)"
-          type="text"
-          error={errors.bookingUrl?.message}
-          {...register("bookingUrl")}
-        />
-        {event.type === "activity" ? (
-          <>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="event-category" className="text-sm font-medium">
-                Категория
-              </label>
-              <select
+        <div
+          className="m3-form-section"
+          role="group"
+          aria-label="Время и бронирование"
+        >
+          <h3 className="m3-title">Время и бронирование</h3>
+          <p className="m3-support">
+            Дата и время указаны в часовом поясе вашего устройства.
+          </p>
+          <div className="grid min-w-0 gap-6">
+            <Controller
+              name="startAt"
+              control={form.control}
+              render={({ field }) => (
+                <DatePicker
+                  {...field}
+                  label="Начало"
+                  id="event-start-at"
+                  withTime
+                  min={trip.startDate}
+                  max={trip.endDate}
+                  disabled={isPending}
+                  error={errors.startAt?.message}
+                  aria-describedby={
+                    scheduleError ? "event-schedule-error" : undefined
+                  }
+                />
+              )}
+            />
+            <Controller
+              name="endAt"
+              control={form.control}
+              render={({ field }) => (
+                <DatePicker
+                  {...field}
+                  label="Окончание (необязательно)"
+                  id="event-end-at"
+                  withTime
+                  min={trip.startDate}
+                  max={trip.endDate}
+                  disabled={isPending}
+                  error={errors.endAt?.message}
+                  aria-describedby={
+                    scheduleError ? "event-schedule-error" : undefined
+                  }
+                />
+              )}
+            />
+          </div>
+          {scheduleError ? (
+            <div id="event-schedule-error">
+              <FormError>{scheduleError}</FormError>
+            </div>
+          ) : null}
+          <FormField
+            label="Ссылка на бронь (необязательно)"
+            type="text"
+            error={errors.bookingUrl?.message}
+            {...register("bookingUrl")}
+          />
+        </div>
+        <div
+          className="m3-form-section"
+          role="group"
+          aria-label="Детали и места"
+        >
+          <h3 className="m3-title">Детали и места</h3>
+          {event.type === "activity" ? (
+            <>
+              <SelectField
+                label="Категория"
+                error={errors.category?.message}
                 id="event-category"
                 {...register("category")}
-                className="w-full rounded-lg border border-muted/60 bg-background px-4 py-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/40"
               >
                 <option value="excursion">Экскурсия</option>
                 <option value="museum">Музей</option>
@@ -189,63 +258,62 @@ export function UpdateEventForm({
                 <option value="restaurant">Ресторан</option>
                 <option value="meeting">Встреча</option>
                 <option value="other">Другое</option>
-              </select>
-            </div>
-            <PlaceChoiceFields
-              name="place"
-              label="Место"
-              optional
-              places={places}
-              form={form}
-            />
-          </>
-        ) : (
-          <>
-            <div className="flex flex-col gap-2">
-              <label htmlFor="event-transport" className="text-sm font-medium">
-                Транспорт
-              </label>
-              <select
+              </SelectField>
+              <PlaceChoiceFields
+                name="place"
+                label="Место"
+                optional
+                places={places}
+                form={form}
+              />
+            </>
+          ) : (
+            <>
+              <SelectField
+                label="Транспорт"
+                error={errors.transportType?.message}
                 id="event-transport"
                 {...register("transportType")}
-                className="w-full rounded-lg border border-muted/60 bg-background px-4 py-3 text-base text-foreground outline-none focus:border-accent focus:ring-2 focus:ring-accent/40"
               >
                 <option value="walk">Пешком</option>
                 <option value="car">Автомобиль</option>
                 <option value="train">Поезд</option>
                 <option value="plane">Самолёт</option>
                 <option value="other">Другое</option>
-              </select>
-            </div>
-            <div className="grid min-w-0 gap-5 sm:grid-cols-2">
-              <PlaceChoiceFields
-                name="fromPlace"
-                label="Откуда"
-                places={places}
-                form={form}
-              />
-              <PlaceChoiceFields
-                name="toPlace"
-                label="Куда"
-                places={places}
-                form={form}
-              />
-            </div>
-          </>
-        )}
+              </SelectField>
+              <div className="grid min-w-0 gap-6 sm:grid-cols-2">
+                <PlaceChoiceFields
+                  name="fromPlace"
+                  label="Откуда"
+                  places={places}
+                  form={form}
+                />
+                <PlaceChoiceFields
+                  name="toPlace"
+                  label="Куда"
+                  places={places}
+                  form={form}
+                />
+              </div>
+            </>
+          )}
+        </div>
       </fieldset>
       {error ? (
         <FormError>
           Не удалось сохранить событие. Проверьте данные и попробуйте ещё раз.
         </FormError>
       ) : null}
-      <button
+      <Button
         type="submit"
-        disabled={!isValid || !isDirty || isPending}
-        className="mt-2 w-full cursor-pointer rounded-lg bg-accent px-5 py-3 text-base font-semibold text-foreground transition-colors enabled:hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={!isValid || !isDirty || isPending || Boolean(scheduleError)}
+        aria-busy={isPending}
+        className={`mt-2 w-full ${isPending ? "m3-loading" : ""}`}
       >
-        {isPending ? "Сохраняем…" : "Сохранить"}
-      </button>
+        <span role={isPending ? "status" : undefined}>
+          {isPending ? "Сохраняем…" : "Сохранить"}
+        </span>
+      </Button>
     </form>
   );
 }

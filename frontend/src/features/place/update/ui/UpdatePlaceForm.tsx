@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 
 import type { Place } from "@entities/place";
-import { FormError, FormField } from "@shared/ui";
+import { Button, FormError, FormField } from "@shared/ui";
 
 import { useUpdatePlaceMutation } from "../model/use-update-place-mutation";
 import { type UpdatePlaceValues, updatePlaceSchema } from "../model/validation";
@@ -54,43 +54,50 @@ export function UpdatePlaceForm({
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="flex flex-col gap-5"
+      className="m3-form"
       noValidate
     >
-      <p className="text-sm text-foreground/70">ID места: {place.id}</p>
-      <fieldset disabled={isPending} className="flex flex-col gap-5">
-        <FormField
-          label="Название места"
-          type="text"
-          maxLength={200}
-          error={errors.name?.message}
-          {...register("name")}
-        />
-        <FormField
-          label="Адрес (необязательно)"
-          type="text"
-          maxLength={1000}
-          error={errors.address?.message}
-          {...register("address")}
-        />
-        <FormField
-          label="Широта"
-          type="number"
-          step="any"
-          min={-90}
-          max={90}
-          error={errors.latitude?.message}
-          {...register("latitude", { valueAsNumber: true })}
-        />
-        <FormField
-          label="Долгота"
-          type="number"
-          step="any"
-          min={-180}
-          max={180}
-          error={errors.longitude?.message}
-          {...register("longitude", { valueAsNumber: true })}
-        />
+      <fieldset disabled={isPending} className="m3-form">
+        <div className="m3-form-section" role="group" aria-label="О месте">
+          <h3 className="m3-title">О месте</h3>
+          <FormField
+            label="Название места"
+            type="text"
+            maxLength={200}
+            error={errors.name?.message}
+            {...register("name")}
+          />
+          <FormField
+            label="Адрес (необязательно)"
+            type="text"
+            maxLength={1000}
+            error={errors.address?.message}
+            {...register("address")}
+          />
+        </div>
+        <div className="m3-form-section" role="group" aria-label="Координаты">
+          <h3 className="m3-title">Координаты</h3>
+          <div className="grid min-w-0 gap-6 sm:grid-cols-2">
+            <FormField
+              label="Широта"
+              type="number"
+              step="any"
+              min={-90}
+              max={90}
+              error={errors.latitude?.message}
+              {...register("latitude", { valueAsNumber: true })}
+            />
+            <FormField
+              label="Долгота"
+              type="number"
+              step="any"
+              min={-180}
+              max={180}
+              error={errors.longitude?.message}
+              {...register("longitude", { valueAsNumber: true })}
+            />
+          </div>
+        </div>
       </fieldset>
 
       {error ? (
@@ -99,13 +106,16 @@ export function UpdatePlaceForm({
         </FormError>
       ) : null}
 
-      <button
+      <Button
         type="submit"
         disabled={!isValid || !isDirty || isPending}
-        className="mt-2 w-full cursor-pointer rounded-lg bg-accent px-5 py-3 text-base font-semibold text-foreground transition-colors enabled:hover:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:opacity-50"
+        aria-busy={isPending}
+        className="mt-2 w-full"
       >
-        {isPending ? "Сохраняем…" : "Сохранить"}
-      </button>
+        <span role={isPending ? "status" : undefined}>
+          {isPending ? "Сохраняем…" : "Сохранить"}
+        </span>
+      </Button>
     </form>
   );
 }
