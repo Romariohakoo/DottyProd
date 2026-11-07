@@ -17,7 +17,7 @@ from src.core.security import (
 from src.models.user_model import UserModel
 from src.repositories.auth_session_repository import AuthSessionRepository
 from src.repositories.user_repository import UserRepository
-from src.schemas.auth import UserLogin, UserRegister
+from src.schemas.auth import UserLogin, UserRegister, UserUpdateCredentials
 
 
 @dataclass(frozen=True)
@@ -56,14 +56,48 @@ class AuthService:
         username: str | None = None,
         name: str | None = None,
         avatar_url: str | None = None,
+        link_user_id: int | None = None,
     ) -> tuple[UserModel, TokenPair]:
-        user = await self.users.get_or_create_by_telegram(telegram_id, username, name, avatar_url)
+        existing_tg_user = await self.users.get_by_telegram_id(telegram_id)
+
+        if link_user_id is not None:
+            current_user = await self.users.get_by_id(link_user_id)
+            if current_user is not None:
+                if existing_tg_user is not None and existing_tg_user.id != current_user.id:
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT,
+                        "Telegram account already linked to another user",
+                    )
+                user = await self.users.link_telegram(current_user, telegram_id, name, avatar_url)
+            else:
+                user = await self.users.get_or_create_by_telegram(telegram_id, username, name, avatar_url)
+        else:
+            user = existing_tg_user or await self.users.get_or_create_by_telegram(
+                telegram_id, username, name, avatar_url
+            )
 
         session_id = str(uuid4())
         tokens = _issue_pair(user.id, session_id)
         await self.auth_sessions.create(session_id, user.id, tokens.refresh.jti, tokens.refresh.expires_at)
 
         return user, tokens
+
+    async def update_credentials(self, user: UserModel, data: UserUpdateCredentials) -> UserModel:
+        by_email = await self.users.get_by_email(data.email)
+        if by_email is not None and by_email.id != user.id:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
+
+        if data.username and data.username != user.username:
+            by_username = await self.users.get_by_username(data.username)
+            if by_username is not None and by_username.id != user.id:
+                raise HTTPException(status.HTTP_409_CONFLICT, "Username already taken")
+
+        return await self.users.update_credentials(
+            user=user,
+            email=data.email,
+            hashed_password=hash_password(data.password),
+            username=data.username,
+        )
 
     async def refresh(self, refresh_token: str | None) -> TokenPair:
         try:

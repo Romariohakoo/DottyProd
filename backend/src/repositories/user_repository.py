@@ -56,3 +56,34 @@ class UserRepository:
         await self.session.commit()
         await self.session.refresh(user)
         return user
+
+    async def link_telegram(
+        self,
+        user: UserModel,
+        telegram_id: int,
+        name: str | None = None,
+        avatar_url: str | None = None,
+    ) -> UserModel:
+        user.telegram_id = telegram_id
+        if name and not user.name:
+            user.name = name
+        if avatar_url and not user.avatar_url:
+            user.avatar_url = avatar_url
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user
+
+    async def update_credentials(
+        self,
+        user: UserModel,
+        email: str,
+        hashed_password: str,
+        username: str | None = None,
+    ) -> UserModel:
+        user.email = email
+        user.hashed_password = hashed_password
+        if username:
+            user.username = username
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user

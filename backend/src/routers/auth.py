@@ -6,8 +6,9 @@ from fastapi.responses import RedirectResponse
 from src.core.config import settings
 from src.core.cookies import REFRESH_COOKIE, clear_auth_cookies, set_auth_cookies
 from src.core.dependencies import AccessToken, CurrentUser
+from src.core.security import InvalidToken, read_token
 from src.db.dependencies import SessionDep
-from src.schemas.auth import UserLogin, UserRegister, UserResponse
+from src.schemas.auth import UserLogin, UserRegister, UserResponse, UserUpdateCredentials
 from src.services.auth_service import AuthService
 from src.services.telegram_oauth import build_telegram_auth_url, fetch_telegram_user
 
@@ -36,8 +37,16 @@ async def login(data: UserLogin, response: Response, auth: AuthServiceDep):
 
 
 @router.post("/telegram/start")
-async def telegram_start():
-    return {"authorization_url": build_telegram_auth_url()}
+async def telegram_start(access_token: AccessToken = None):
+    link_user_id: int | None = None
+    if access_token:
+        try:
+            claims = read_token(access_token, "access")
+            link_user_id = claims.user_id
+        except InvalidToken:
+            link_user_id = None
+
+    return {"authorization_url": build_telegram_auth_url(link_user_id=link_user_id)}
 
 
 @router.get("/telegram/callback")
@@ -77,3 +86,8 @@ async def logout(
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser):
     return user
+
+
+@router.patch("/me", response_model=UserResponse)
+async def update_me(data: UserUpdateCredentials, user: CurrentUser, auth: AuthServiceDep):
+    return await auth.update_credentials(user, data)

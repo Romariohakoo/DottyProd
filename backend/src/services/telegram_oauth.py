@@ -21,14 +21,45 @@ def _derive_verifier(state: str) -> str:
     ).hexdigest()
 
 
-def build_telegram_auth_url() -> str:
+def _sign_state_part(payload: str) -> str:
+    return hmac.new(
+        settings.secret_key.encode("utf-8"),
+        f"state:{payload}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:16]
+
+
+def _encode_state(link_user_id: int | None = None) -> str:
+    token = secrets.token_hex(12)
+    if link_user_id is None:
+        return token
+    payload = f"{token}-{link_user_id}"
+    sig = _sign_state_part(payload)
+    return f"{payload}-{sig}"
+
+
+def _extract_link_user_id(state: str) -> int | None:
+    parts = state.split("-")
+    if len(parts) != 3:
+        return None
+    token, uid_str, sig = parts
+    payload = f"{token}-{uid_str}"
+    if not hmac.compare_digest(sig, _sign_state_part(payload)):
+        return None
+    try:
+        return int(uid_str)
+    except ValueError:
+        return None
+
+
+def build_telegram_auth_url(link_user_id: int | None = None) -> str:
     if not settings.telegram_client_id or not settings.telegram_client_secret:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "Telegram OAuth is not configured in .env",
         )
 
-    state = secrets.token_urlsafe(24)
+    state = _encode_state(link_user_id=link_user_id)
     nonce = secrets.token_urlsafe(16)
     verifier = _derive_verifier(state)
     challenge = (
@@ -52,6 +83,7 @@ def build_telegram_auth_url() -> str:
 
 async def fetch_telegram_user(code: str, state: str) -> dict:
     verifier = _derive_verifier(state)
+    link_user_id = _extract_link_user_id(state)
     relay = settings.telegram_relay_url.rstrip("/")
     token_url = f"{relay}/token" if relay else "https://oauth.telegram.org/token"
 
@@ -89,4 +121,5 @@ async def fetch_telegram_user(code: str, state: str) -> dict:
         "username": claims.get("preferred_username"),
         "name": claims.get("name"),
         "avatar_url": claims.get("picture"),
+        "link_user_id": link_user_id,
     }
