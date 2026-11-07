@@ -9,20 +9,19 @@ class UserRepository:
         self.session = session
 
     async def get_by_id(self, user_id: int) -> UserModel | None:
-        result = await self.session.execute(select(UserModel).where(UserModel.id == user_id))
-        return result.scalar_one_or_none()
+        return await self.session.get(UserModel, user_id)
 
     async def get_by_email(self, email: str) -> UserModel | None:
-        result = await self.session.execute(select(UserModel).where(UserModel.email == email))
-        return result.scalar_one_or_none()
+        return await self.session.scalar(select(UserModel).where(UserModel.email == email))
 
     async def get_by_username(self, username: str) -> UserModel | None:
-        result = await self.session.execute(select(UserModel).where(UserModel.username == username))
-        return result.scalar_one_or_none()
+        return await self.session.scalar(select(UserModel).where(UserModel.username == username))
 
     async def create(self, username: str, email: str, hashed_password: str) -> UserModel:
         user = UserModel(username=username, email=email, hashed_password=hashed_password)
         self.session.add(user)
+
         await self.session.commit()
         await self.session.refresh(user)
+
         return user

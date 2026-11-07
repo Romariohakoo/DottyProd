@@ -3,10 +3,9 @@ from typing import Annotated
 from fastapi import Depends
 
 from src.core.dependencies import CurrentUser
-from src.core.domain import ForbiddenError
 from src.db.dependencies import SessionDep
 from src.models.trip_model import EventModel
-from src.services.trip_service import INSUFFICIENT_ROLE, TripAccess, TripService
+from src.services.trip_service import EDITORS, OWNER, TripAccess, TripService, require_role
 
 
 def _trip_service(session: SessionDep) -> TripService:
@@ -23,17 +22,16 @@ async def _member_trip(trip_id: int, user: CurrentUser, trips: TripServiceDep) -
 MemberTrip = Annotated[TripAccess, Depends(_member_trip)]
 
 
-def _require_role(*roles: str):
+def _trip_with_role(roles: tuple[str, ...]):
     async def dependency(access: MemberTrip) -> TripAccess:
-        if access.role not in roles:
-            raise ForbiddenError(INSUFFICIENT_ROLE)
+        require_role(access, roles)
         return access
 
     return dependency
 
 
-EditableTrip = Annotated[TripAccess, Depends(_require_role("owner", "editor"))]
-OwnedTrip = Annotated[TripAccess, Depends(_require_role("owner"))]
+EditableTrip = Annotated[TripAccess, Depends(_trip_with_role(EDITORS))]
+OwnedTrip = Annotated[TripAccess, Depends(_trip_with_role(OWNER))]
 
 
 async def _editable_event(event_id: int, access: EditableTrip, trips: TripServiceDep) -> EventModel:

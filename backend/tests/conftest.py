@@ -1,17 +1,23 @@
 import asyncio
 import inspect
 import os
-import tempfile
 from pathlib import Path
 
-os.environ.setdefault("UPLOAD_DIR", tempfile.mkdtemp(prefix="travelhub-uploads-"))
 # lifespan ходит в БД из настроек, а не в тестовую; сид проверяется в test_demo_users.py
 os.environ.setdefault("SEED_DEMO_USERS", "false")
+os.environ.update(
+    S3_ENDPOINT_URL="https://s3.amazonaws.com",
+    S3_REGION="us-east-1",
+    S3_BUCKET="test-bucket",
+    S3_ACCESS_KEY="testing",
+    S3_SECRET_KEY="testing",
+)
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
+from moto import mock_aws
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -20,6 +26,7 @@ from testcontainers.community.postgres import PostgresContainer
 from src.core.config import settings
 from src.db.dependencies import get_session
 from src.main import app
+from src.storage.s3 import get_storage
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 POSTGRES_IMAGE = "postgres:16-alpine"
@@ -83,6 +90,17 @@ async def _truncate(url: str) -> None:
                 await connection.execute(text(f"TRUNCATE {quoted} RESTART IDENTITY CASCADE"))
     finally:
         await engine.dispose()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def s3_storage():
+    with mock_aws():
+        get_storage.cache_clear()
+        storage = get_storage()
+        storage.client.create_bucket(Bucket=settings.s3_bucket)
+        yield storage
+
+    get_storage.cache_clear()
 
 
 @pytest.fixture(scope="session")

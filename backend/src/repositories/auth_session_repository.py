@@ -25,12 +25,14 @@ class AuthSessionRepository:
         )
         self.session.add(auth_session)
         await self.session.commit()
+
         return auth_session
 
     async def get_active_by_id(self, session_id: str) -> AuthSessionModel | None:
         auth_session = await self.session.get(AuthSessionModel, session_id)
         if auth_session is None or auth_session.revoked_at is not None:
             return None
+
         return auth_session
 
     async def rotate_refresh_token(
@@ -52,15 +54,13 @@ class AuthSessionRepository:
             .values(refresh_token_jti=new_jti, expires_at=expires_at)
         )
         await self.session.commit()
+
         return result.rowcount == 1
 
     async def revoke(self, session_id: str) -> None:
         await self.session.execute(
             update(AuthSessionModel)
-            .where(
-                AuthSessionModel.id == session_id,
-                AuthSessionModel.revoked_at.is_(None),
-            )
+            .where(AuthSessionModel.id == session_id, AuthSessionModel.revoked_at.is_(None))
             .values(revoked_at=datetime.now(timezone.utc))
         )
         await self.session.commit()

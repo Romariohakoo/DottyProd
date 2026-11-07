@@ -1,19 +1,34 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import jwt
-from fastapi import HTTPException
 from pwdlib import PasswordHash
-from starlette import status
 
 from src.core.config import settings
 
 password_hash = PasswordHash.recommended()
 
 
+@dataclass(frozen=True)
+class IssuedToken:
+    value: str
+    jti: str
+    expires_at: datetime
+
+
+@dataclass(frozen=True)
+class TokenClaims:
+    user_id: int
+    session_id: str
+    jti: str
+
+
+class InvalidToken(Exception):
+    pass
+
+
 def hash_password(password: str) -> str:
-    if len(password) < 6 or len(password) > 32:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Password must be at least 6 characters and less than 32.")
     return password_hash.hash(password)
 
 
@@ -21,44 +36,45 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return password_hash.verify(plain_password, hashed_password)
 
 
-def create_access_token(subject: str, session_id: str) -> str:
-    return _create_token(
-        subject=subject,
-        session_id=session_id,
-        token_type="access",
-        expires_at=datetime.now(timezone.utc)
-        + timedelta(minutes=settings.access_token_expire_minutes),
-    )
+def issue_access_token(user_id: int, session_id: str) -> IssuedToken:
+    lifetime = timedelta(minutes=settings.access_token_expire_minutes)
+    return _issue_token(user_id, session_id, "access", lifetime)
 
 
-def create_refresh_token(subject: str, session_id: str) -> str:
-    return _create_token(
-        subject=subject,
-        session_id=session_id,
-        token_type="refresh",
-        expires_at=refresh_token_expires_at(),
-    )
+def issue_refresh_token(user_id: int, session_id: str) -> IssuedToken:
+    lifetime = timedelta(days=settings.refresh_token_expire_days)
+    return _issue_token(user_id, session_id, "refresh", lifetime)
 
 
-def refresh_token_expires_at() -> datetime:
-    return datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+def read_token(token: str | None, token_type: str) -> TokenClaims:
+    if not token:
+        raise InvalidToken
+
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+        claims = TokenClaims(int(payload["sub"]), payload["sid"], payload["jti"])
+    except (jwt.PyJWTError, KeyError, TypeError, ValueError):
+        raise InvalidToken from None
+
+    if payload.get("type") != token_type:
+        raise InvalidToken
+    if not isinstance(claims.session_id, str) or not isinstance(claims.jti, str):
+        raise InvalidToken
+
+    return claims
 
 
-def _create_token(
-    subject: str,
-    session_id: str,
-    token_type: str,
-    expires_at: datetime,
-) -> str:
+def _issue_token(user_id: int, session_id: str, token_type: str, lifetime: timedelta) -> IssuedToken:
+    jti = str(uuid4())
+    expires_at = datetime.now(timezone.utc) + lifetime
+
     payload = {
-        "sub": subject,
+        "sub": str(user_id),
         "sid": session_id,
-        "jti": str(uuid4()),
+        "jti": jti,
         "type": token_type,
         "exp": expires_at,
     }
-    return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
+    value = jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 
-
-def decode_access_token(token: str) -> dict:
-    return jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+    return IssuedToken(value, jti, expires_at)

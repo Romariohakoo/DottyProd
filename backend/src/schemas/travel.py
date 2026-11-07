@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from pathlib import Path
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -91,7 +90,11 @@ class MovementInput(EventBase):
 EventInput = Annotated[ActivityInput | MovementInput, Field(discriminator="type")]
 
 
-class TripDTO(BaseModel):
+class FromORM(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TripDTO(FromORM):
     id: int
     title: str
     country: str
@@ -113,7 +116,7 @@ class TripCard(BaseModel):
     role: TripRole
 
 
-class PlaceDTO(BaseModel):
+class PlaceDTO(FromORM):
     id: int
     name: str
     address: str | None
@@ -121,7 +124,7 @@ class PlaceDTO(BaseModel):
     longitude: float
 
 
-class AttachmentDTO(BaseModel):
+class AttachmentDTO(FromORM):
     id: int
     file_name: str
     mime_type: str
@@ -131,7 +134,7 @@ class AttachmentDTO(BaseModel):
     created_at: datetime
 
 
-class EventBaseDTO(BaseModel):
+class EventBaseDTO(FromORM):
     id: int
     title: str
     description: str | None
@@ -167,6 +170,6 @@ class TripDetail(BaseModel):
 
 @dataclass(frozen=True)
 class StoredFile:
-    path: Path
+    content: bytes
     mime_type: str
     file_name: str

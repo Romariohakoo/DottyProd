@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     cookie_domain: str | None = None
 
-    upload_dir: str = "/data/uploads"
+    s3_endpoint_url: str = "https://firsts3.ru"
+    s3_region: str = "default"
+    s3_bucket: str = "dotty"
+    s3_access_key: str
+    s3_secret_key: str
+
     upload_max_bytes: int = 10_485_760
     upload_max_pixels: int = 40_000_000
     upload_max_per_event: int = 20

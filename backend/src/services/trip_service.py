@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from typing import Literal
 from uuid import UUID, uuid4
 
 from PIL import Image, ImageOps
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,7 +29,6 @@ from src.schemas.travel import (
     EventDTO,
     EventInput,
     MovementDTO,
-    MovementInput,
     PlaceChoice,
     PlaceDTO,
     PlaceInput,
@@ -37,9 +38,8 @@ from src.schemas.travel import (
     TripDTO,
     TripDetail,
     TripInput,
-    TripRole,
 )
-from src.storage.local import LocalStorage
+from src.storage.s3 import get_storage
 
 TRIP_NOT_FOUND = "Trip not found"
 EVENT_NOT_FOUND = "Event not found"
@@ -53,8 +53,23 @@ FILE_TOO_LARGE = "File is too large"
 TOO_MANY_ATTACHMENTS = "Too many attachments"
 UNSUPPORTED_FILE = "Only JPEG and PNG are supported"
 
-_CONTENT_ROLES = frozenset({"owner", "editor"})
+OWNER = ("owner",)
+EDITORS = ("owner", "editor")
+
 _PLACE_FOREIGN_KEYS = frozenset({"fk_event_place", "fk_event_from_place", "fk_event_to_place"})
+_INVALID_INPUT_CONSTRAINTS = frozenset(
+    {
+        "ck_trip_dates",
+        "ck_event_dates",
+        "ck_event_activity_fields",
+        "ck_event_movement_fields",
+        "ck_place_coordinates",
+    }
+)
+
+_IMAGE_TYPES = {"JPEG": ("image/jpeg", "jpg"), "PNG": ("image/png", "png")}
+_THUMBNAIL_SIZE = (400, 400)
+_THUMBNAIL_MIME = "image/jpeg"
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,140 +78,174 @@ class TripAccess:
     role: str
 
 
+def require_role(access: TripAccess, roles: tuple[str, ...]) -> None:
+    if access.role not in roles:
+        raise ForbiddenError(INSUFFICIENT_ROLE)
+
+
 class TripService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.trips = TripRepository(session)
-        self.storage = LocalStorage(Path(settings.upload_dir))
+        self.storage = get_storage()
+
+    async def require_access(self, user: UserModel, trip_id: int) -> TripAccess:
+        trip = await self.trips.get_by_id(trip_id)
+        role = None if trip is None else await self.trips.get_role(trip, user.id)
+        if role is None:
+            raise NotFoundError(TRIP_NOT_FOUND)
+
+        return TripAccess(trip, role)
+
+    async def require_event(self, trip_id: int, event_id: int) -> EventModel:
+        event = await self.trips.get_event(trip_id, event_id)
+        if event is None:
+            raise NotFoundError(EVENT_NOT_FOUND)
+
+        return event
 
     async def list_trips(self, user: UserModel) -> list[TripCard]:
         rows = await self.trips.list_for_user(user.id)
-        return [self._card(trip, role) for trip, role in rows]
+        return [_trip_card(trip, role) for trip, role in rows]
 
     async def get_trip(self, access: TripAccess) -> TripDetail:
         places = await self.trips.list_places(access.trip.id)
         events = await self.trips.list_events(access.trip.id)
+
         return TripDetail(
-            trip=self._trip_dto(access.trip),
-            role=self._role(access.role),
-            places=[self._place_dto(place) for place in places],
-            timeline=[self._event_dto(event) for event in events],
+            trip=TripDTO.model_validate(access.trip),
+            role=access.role,
+            places=[PlaceDTO.model_validate(place) for place in places],
+            timeline=[_event_dto(event) for event in events],
         )
 
     async def create_trip(self, user: UserModel, data: TripInput) -> TripDTO:
         if data.client_request_id is not None:
             existing = await self.trips.get_trip_by_request(user.id, data.client_request_id)
             if existing is not None:
-                return self._trip_dto(existing)
-        trip = self.trips.add_trip(user.id, data)
-        await self.session.flush()
+                return TripDTO.model_validate(existing)
+
+        trip = TripModel(owner_id=user.id, **data.model_dump())
+        self.session.add(trip)
         await self._commit()
         await self.session.refresh(trip)
-        return self._trip_dto(trip)
+
+        return TripDTO.model_validate(trip)
 
     async def update_trip(self, access: TripAccess, data: TripInput) -> TripDTO:
-        self._require_owner(access)
+        require_role(access, OWNER)
         await self.trips.lock_trip(access.trip.id)
-        self.trips.apply_trip(access.trip, data)
+
+        _assign(access.trip, data)
         await self._commit()
         await self.session.refresh(access.trip)
-        return self._trip_dto(access.trip)
+
+        return TripDTO.model_validate(access.trip)
 
     async def delete_trip(self, access: TripAccess) -> None:
-        self._require_owner(access)
+        require_role(access, OWNER)
         await self.trips.lock_trip(access.trip.id)
+
         keys = await self.trips.attachment_keys_for_trip(access.trip.id)
         await self.trips.delete_trip_rows(access.trip)
         await self._commit()
-        self._delete_files(keys)
+
+        await self._delete_files(keys)
 
     async def create_place(self, access: TripAccess, data: PlaceInput) -> PlaceDTO:
-        self._require_content_access(access)
+        require_role(access, EDITORS)
         await self.trips.lock_trip(access.trip.id)
+
         if data.client_request_id is not None:
             existing = await self.trips.get_place_by_request(access.trip.id, data.client_request_id)
             if existing is not None:
-                return self._place_dto(existing)
-        place = self.trips.add_place(access.trip.id, data)
-        await self.session.flush()
+                return PlaceDTO.model_validate(existing)
+
+        place = PlaceModel(trip_id=access.trip.id, **data.model_dump())
+        self.session.add(place)
         await self._commit()
         await self.session.refresh(place)
-        return self._place_dto(place)
+
+        return PlaceDTO.model_validate(place)
 
     async def update_place(self, access: TripAccess, place_id: int, data: PlaceInput) -> PlaceDTO:
-        self._require_content_access(access)
+        require_role(access, EDITORS)
         await self.trips.lock_trip(access.trip.id)
-        place = await self._place(access.trip.id, place_id)
-        self.trips.apply_place(place, data)
+
+        place = await self._require_place(access.trip.id, place_id)
+        _assign(place, data)
         await self._commit()
         await self.session.refresh(place)
-        return self._place_dto(place)
+
+        return PlaceDTO.model_validate(place)
 
     async def delete_place(self, access: TripAccess, place_id: int) -> None:
-        self._require_content_access(access)
+        require_role(access, EDITORS)
         await self.trips.lock_trip(access.trip.id)
-        place = await self._place(access.trip.id, place_id)
+
+        place = await self._require_place(access.trip.id, place_id)
         if await self.trips.place_in_use(place.id):
             raise PlaceInUse(PLACE_IN_USE)
-        await self.trips.delete_place(place)
+
+        await self.session.delete(place)
         await self._commit()
 
     async def create_event(self, user: UserModel, access: TripAccess, data: EventInput) -> EventDTO:
-        self._require_content_access(access)
+        require_role(access, EDITORS)
         await self.trips.lock_trip(access.trip.id)
+
         if data.client_request_id is not None:
             existing = await self.trips.get_event_by_request(access.trip.id, data.client_request_id)
             if existing is not None:
-                return self._event_dto(existing)
+                return _event_dto(existing)
+
         await self._validate_event_dates(access.trip, data)
+
         event = EventModel(
             trip_id=access.trip.id,
             created_by=user.id,
             type=data.type,
-            title=data.title,
-            description=data.description,
-            start_at=data.start_at,
-            end_at=data.end_at,
-            booking_url=data.booking_url,
             client_request_id=data.client_request_id,
         )
-        await self._apply_event(access.trip.id, event, data)
-        self.trips.add_event(event)
-        await self.session.flush()
+
+        await self._fill_event(event, data)
+        self.session.add(event)
         await self._commit()
-        return await self._event_response(access.trip, event.id)
+
+        return _event_dto(await self.require_event(access.trip.id, event.id))
 
     async def update_event(self, access: TripAccess, event: EventModel, data: EventInput) -> EventDTO:
-        self._require_content_access(access)
+        require_role(access, EDITORS)
         if data.type != event.type:
             raise InvalidDataError(EVENT_TYPE_IMMUTABLE)
+
         await self.trips.lock_trip(access.trip.id)
         await self._validate_event_dates(access.trip, data)
-        event.title = data.title
-        event.description = data.description
-        event.start_at = data.start_at
-        event.end_at = data.end_at
-        event.booking_url = data.booking_url
-        await self._apply_event(access.trip.id, event, data)
+
+        await self._fill_event(event, data)
         await self._commit()
-        return await self._event_response(access.trip, event.id)
+
+        return _event_dto(await self.require_event(access.trip.id, event.id))
 
     async def _validate_event_dates(self, trip: TripModel, data: EventInput) -> None:
         # Read current bounds after acquiring the trip lock: access may have been
         # loaded before another request changed the dates. There is no trip timezone;
         # compare the calendar dates in the offsets supplied by the client.
         await self.session.refresh(trip, attribute_names=["start_date", "end_date"])
+
         moments = (data.start_at,) if data.end_at is None else (data.start_at, data.end_at)
         if any(not trip.start_date <= moment.date() <= trip.end_date for moment in moments):
             raise InvalidDataError(EVENT_OUTSIDE_TRIP)
 
     async def delete_event(self, access: TripAccess, event: EventModel) -> None:
-        self._require_content_access(access)
+        require_role(access, EDITORS)
         await self.trips.lock_trip(access.trip.id)
+
         keys = await self.trips.attachment_keys_for_event(event.id)
-        await self.trips.delete_event(event)
+        await self.session.delete(event)
         await self._commit()
-        self._delete_files(keys)
+
+        await self._delete_files(keys)
 
     async def upload_attachment(
         self,
@@ -208,274 +257,193 @@ class TripService:
         *,
         client_request_id: UUID | None = None,
     ) -> AttachmentDTO:
-        self._require_content_access(access)
+        require_role(access, EDITORS)
         await self.trips.lock_trip(access.trip.id)
         event = await self.require_event(access.trip.id, event_id)
+
         if client_request_id is not None:
             existing = await self.trips.get_attachment_by_request(event.id, client_request_id)
             if existing is not None:
-                return self._attachment_dto(existing)
+                return AttachmentDTO.model_validate(existing)
+
         if await self.trips.count_attachments(event.id) >= settings.upload_max_per_event:
             raise FileTooLarge(TOO_MANY_ATTACHMENTS)
         if len(payload) > settings.upload_max_bytes:
             raise FileTooLarge(FILE_TOO_LARGE)
-        mime, width, height, thumbnail = self._inspect_image(payload)
-        extension = "jpg" if mime == "image/jpeg" else "png"
-        storage_key = f"{access.trip.id}/{uuid4()}.{extension}"
-        thumbnail_key = f"{access.trip.id}/{uuid4()}_thumb.jpg"
-        saved = [storage_key, thumbnail_key]
+
+        image = _inspect_image(payload)
+        attachment = AttachmentModel(
+            event_id=event.id,
+            uploaded_by=user.id,
+            storage_key=f"{access.trip.id}/{uuid4()}.{image.extension}",
+            thumbnail_key=f"{access.trip.id}/{uuid4()}_thumb.jpg",
+            file_name=Path(file_name).name or "image",
+            mime_type=image.mime_type,
+            size_bytes=len(payload),
+            width=image.width,
+            height=image.height,
+            client_request_id=client_request_id,
+        )
+
         try:
-            self.storage.save(storage_key, payload)
-            self.storage.save(thumbnail_key, thumbnail)
-            attachment = AttachmentModel(
-                event_id=event.id,
-                uploaded_by=user.id,
-                storage_key=storage_key,
-                thumbnail_key=thumbnail_key,
-                file_name=Path(file_name).name or "image",
-                mime_type=mime,
-                size_bytes=len(payload),
-                width=width,
-                height=height,
-                client_request_id=client_request_id,
-            )
-            self.trips.add_attachment(attachment)
-            await self.session.flush()
-            await self.session.refresh(attachment)
+            await self.storage.save(attachment.storage_key, payload, image.mime_type)
+            await self.storage.save(attachment.thumbnail_key, image.thumbnail, _THUMBNAIL_MIME)
+            self.session.add(attachment)
             await self._commit()
         except Exception:
-            self._delete_files([(key, key) for key in saved])
+            await self._delete_files([attachment.storage_key, attachment.thumbnail_key])
             raise
-        return self._attachment_dto(attachment)
+
+        await self.session.refresh(attachment)
+        return AttachmentDTO.model_validate(attachment)
 
     async def open_attachment(
         self,
         user: UserModel,
         attachment_id: int,
-        variant: str,
+        variant: Literal["original", "thumbnail"],
     ) -> StoredFile:
         attachment = await self.trips.get_attachment(attachment_id)
         if attachment is None:
             raise NotFoundError(ATTACHMENT_NOT_FOUND)
+
         await self.require_access(user, attachment.event.trip_id)
+
         if variant == "thumbnail":
-            return StoredFile(
-                path=self.storage.open(attachment.thumbnail_key),
-                mime_type="image/jpeg",
-                file_name=attachment.file_name,
-            )
-        return StoredFile(
-            path=self.storage.open(attachment.storage_key),
-            mime_type=attachment.mime_type,
-            file_name=attachment.file_name,
-        )
+            return StoredFile(await self.storage.load(attachment.thumbnail_key), _THUMBNAIL_MIME, attachment.file_name)
+        return StoredFile(await self.storage.load(attachment.storage_key), attachment.mime_type, attachment.file_name)
 
     async def delete_attachment(self, access: TripAccess, attachment_id: int) -> None:
-        self._require_content_access(access)
+        require_role(access, EDITORS)
         await self.trips.lock_trip(access.trip.id)
+
         attachment = await self.trips.get_attachment_in_trip(access.trip.id, attachment_id)
         if attachment is None:
             raise NotFoundError(ATTACHMENT_NOT_FOUND)
-        keys = [(attachment.storage_key, attachment.thumbnail_key)]
-        await self.trips.delete_attachment(attachment)
+
+        keys = [attachment.storage_key, attachment.thumbnail_key]
+        await self.session.delete(attachment)
         await self._commit()
-        self._delete_files(keys)
 
-    async def require_access(self, user: UserModel, trip_id: int) -> TripAccess:
-        trip = await self.trips.get_by_id(trip_id)
-        if trip is None:
-            raise NotFoundError(TRIP_NOT_FOUND)
-        role = await self.trips.get_role(trip, user.id)
-        if role is None:
-            raise NotFoundError(TRIP_NOT_FOUND)
-        return TripAccess(trip, role)
+        await self._delete_files(keys)
 
-    async def require_event(self, trip_id: int, event_id: int) -> EventModel:
-        event = await self.trips.get_event(trip_id, event_id)
-        if event is None:
-            raise NotFoundError(EVENT_NOT_FOUND)
-        return event
-
-    async def read_upload(self, upload) -> bytes:
-        parts: list[bytes] = []
-        total = 0
-        while True:
-            chunk = await upload.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > settings.upload_max_bytes:
-                raise FileTooLarge(FILE_TOO_LARGE)
-            parts.append(chunk)
-        return b"".join(parts)
-
-    def _require_owner(self, access: TripAccess) -> None:
-        if access.role != "owner":
-            raise ForbiddenError(INSUFFICIENT_ROLE)
-
-    def _require_content_access(self, access: TripAccess) -> None:
-        if access.role not in _CONTENT_ROLES:
-            raise ForbiddenError(INSUFFICIENT_ROLE)
-
-    async def _place(self, trip_id: int, place_id: int) -> PlaceModel:
+    async def _require_place(self, trip_id: int, place_id: int) -> PlaceModel:
         place = await self.trips.get_place(trip_id, place_id)
         if place is None:
             raise NotFoundError(PLACE_NOT_FOUND)
+
         return place
 
-    async def _resolve_place(self, trip_id: int, ref: PlaceChoice) -> PlaceModel:
-        if isinstance(ref, PlaceRef):
-            return await self._place(trip_id, ref.id)
-        if ref.client_request_id is not None:
-            existing = await self.trips.get_place_by_request(trip_id, ref.client_request_id)
+    async def _resolve_place(self, trip_id: int, choice: PlaceChoice) -> PlaceModel:
+        if isinstance(choice, PlaceRef):
+            return await self._require_place(trip_id, choice.id)
+
+        if choice.client_request_id is not None:
+            existing = await self.trips.get_place_by_request(trip_id, choice.client_request_id)
             if existing is not None:
                 return existing
-        place = self.trips.add_place(trip_id, ref)
+
+        place = PlaceModel(trip_id=trip_id, **choice.model_dump())
+        self.session.add(place)
         await self.session.flush()
+
         return place
 
-    async def _apply_event(self, trip_id: int, event: EventModel, data: EventInput) -> None:
+    async def _fill_event(self, event: EventModel, data: EventInput) -> None:
+        event.title = data.title
+        event.description = data.description
+        event.start_at = data.start_at
+        event.end_at = data.end_at
+        event.booking_url = data.booking_url
+
         if isinstance(data, ActivityInput):
+            place = None if data.place is None else await self._resolve_place(event.trip_id, data.place)
             event.category = data.category
-            event.place_id = None if data.place is None else (await self._resolve_place(trip_id, data.place)).id
-            event.from_place_id = None
-            event.to_place_id = None
-            event.transport_type = None
-            return
-        if isinstance(data, MovementInput):
-            event.category = None
-            event.place_id = None
-            event.from_place_id = (await self._resolve_place(trip_id, data.from_place)).id
-            event.to_place_id = (await self._resolve_place(trip_id, data.to_place)).id
+            event.place_id = None if place is None else place.id
+            event.from_place_id = event.to_place_id = event.transport_type = None
+        else:
+            event.category = event.place_id = None
+            event.from_place_id = (await self._resolve_place(event.trip_id, data.from_place)).id
+            event.to_place_id = (await self._resolve_place(event.trip_id, data.to_place)).id
             event.transport_type = data.transport_type
-
-    async def _event_response(self, trip: TripModel, event_id: int) -> EventDTO:
-        event = await self.trips.get_event(trip.id, event_id)
-        if event is None:
-            raise NotFoundError(EVENT_NOT_FOUND)
-        return self._event_dto(event)
-
-    def _event_dto(self, event: EventModel) -> EventDTO:
-        base = dict(
-            id=event.id,
-            title=event.title,
-            description=event.description,
-            start_at=event.start_at,
-            end_at=event.end_at,
-            booking_url=event.booking_url,
-            created_by=event.created_by,
-            attachments=[self._attachment_dto(item) for item in event.attachments],
-        )
-        if event.type == "activity":
-            return ActivityDTO(
-                type="activity",
-                category=event.category or "other",
-                place=None if event.place is None else self._place_dto(event.place),
-                **base,
-            )
-        return MovementDTO(
-            type="movement",
-            transport_type=event.transport_type or "other",
-            from_place=self._place_dto(event.from_place),
-            to_place=self._place_dto(event.to_place),
-            **base,
-        )
-
-    def _inspect_image(self, payload: bytes) -> tuple[str, int, int, bytes]:
-        try:
-            with Image.open(BytesIO(payload)) as probe:
-                probe.verify()
-            with Image.open(BytesIO(payload)) as image:
-                if image.format not in {"JPEG", "PNG"}:
-                    raise UnsupportedFile(UNSUPPORTED_FILE)
-                width, height = image.size
-                if width < 1 or height < 1 or width * height > settings.upload_max_pixels:
-                    raise FileTooLarge(FILE_TOO_LARGE)
-                mime = "image/jpeg" if image.format == "JPEG" else "image/png"
-                oriented = ImageOps.exif_transpose(image)
-                if oriented.mode != "RGB":
-                    oriented = oriented.convert("RGB")
-                oriented.thumbnail((400, 400))
-                buffer = BytesIO()
-                oriented.save(buffer, format="JPEG", quality=80)
-                return mime, width, height, buffer.getvalue()
-        except (UnsupportedFile, FileTooLarge):
-            raise
-        except Exception:
-            raise UnsupportedFile(UNSUPPORTED_FILE) from None
-
-    def _card(self, trip: TripModel, role: str) -> TripCard:
-        return TripCard(
-            id=trip.id,
-            title=trip.title,
-            country=trip.country,
-            start_date=trip.start_date,
-            end_date=trip.end_date,
-            cover_url=trip.cover_url,
-            role=self._role(role),
-        )
-
-    def _trip_dto(self, trip: TripModel) -> TripDTO:
-        return TripDTO(
-            id=trip.id,
-            title=trip.title,
-            country=trip.country,
-            start_date=trip.start_date,
-            end_date=trip.end_date,
-            description=trip.description,
-            cover_url=trip.cover_url,
-            created_at=trip.created_at,
-            updated_at=trip.updated_at,
-        )
-
-    def _place_dto(self, place: PlaceModel) -> PlaceDTO:
-        return PlaceDTO(
-            id=place.id,
-            name=place.name,
-            address=place.address,
-            latitude=place.latitude,
-            longitude=place.longitude,
-        )
-
-    def _attachment_dto(self, attachment: AttachmentModel) -> AttachmentDTO:
-        return AttachmentDTO(
-            id=attachment.id,
-            file_name=attachment.file_name,
-            mime_type=attachment.mime_type,
-            size_bytes=attachment.size_bytes,
-            width=attachment.width,
-            height=attachment.height,
-            created_at=attachment.created_at,
-        )
-
-    def _role(self, role: str) -> TripRole:
-        if role in {"owner", "editor", "viewer"}:
-            return role
-        raise ForbiddenError(INSUFFICIENT_ROLE)
 
     async def _commit(self) -> None:
         try:
             await self.session.commit()
         except IntegrityError as exc:
             await self.session.rollback()
-            self._raise_integrity(exc)
 
-    def _raise_integrity(self, exc: IntegrityError) -> None:
-        name = getattr(getattr(exc, "orig", None), "constraint_name", None)
-        if name in _PLACE_FOREIGN_KEYS:
-            raise PlaceInUse(PLACE_IN_USE) from None
-        if name in {
-            "ck_trip_dates",
-            "ck_event_dates",
-            "ck_event_activity_fields",
-            "ck_event_movement_fields",
-            "ck_place_coordinates",
-        }:
-            raise InvalidDataError("Invalid input") from None
-        raise ConflictError("Conflict, retry") from None
+            constraint = getattr(exc.orig, "constraint_name", None)
+            if constraint in _PLACE_FOREIGN_KEYS:
+                raise PlaceInUse(PLACE_IN_USE) from None
+            if constraint in _INVALID_INPUT_CONSTRAINTS:
+                raise InvalidDataError("Invalid input") from None
+            raise ConflictError("Conflict, retry") from None
 
-    def _delete_files(self, keys: list[tuple[str, str]]) -> None:
-        for storage_key, thumbnail_key in keys:
-            self.storage.delete(storage_key)
-            if thumbnail_key != storage_key:
-                self.storage.delete(thumbnail_key)
+    async def _delete_files(self, keys: list[str]) -> None:
+        for key in keys:
+            await self.storage.delete(key)
+
+
+def _assign(model, data: BaseModel) -> None:
+    for field, value in data.model_dump(exclude={"client_request_id"}).items():
+        setattr(model, field, value)
+
+
+def _trip_card(trip: TripModel, role: str) -> TripCard:
+    return TripCard(
+        id=trip.id,
+        title=trip.title,
+        country=trip.country,
+        start_date=trip.start_date,
+        end_date=trip.end_date,
+        cover_url=trip.cover_url,
+        role=role,
+    )
+
+
+def _event_dto(event: EventModel) -> EventDTO:
+    dto = ActivityDTO if event.type == "activity" else MovementDTO
+    return dto.model_validate(event)
+
+
+@dataclass(frozen=True, slots=True)
+class _InspectedImage:
+    mime_type: str
+    extension: str
+    width: int
+    height: int
+    thumbnail: bytes
+
+
+def _inspect_image(payload: bytes) -> _InspectedImage:
+    try:
+        with Image.open(BytesIO(payload)) as probe:
+            probe.verify()
+        image = Image.open(BytesIO(payload))
+    except Exception:
+        raise UnsupportedFile(UNSUPPORTED_FILE) from None
+
+    with image:
+        if image.format not in _IMAGE_TYPES:
+            raise UnsupportedFile(UNSUPPORTED_FILE)
+
+        width, height = image.size
+        if width * height > settings.upload_max_pixels:
+            raise FileTooLarge(FILE_TOO_LARGE)
+
+        mime_type, extension = _IMAGE_TYPES[image.format]
+        return _InspectedImage(mime_type, extension, width, height, _make_thumbnail(image))
+
+
+def _make_thumbnail(image: Image.Image) -> bytes:
+    try:
+        thumbnail = ImageOps.exif_transpose(image).convert("RGB")
+        thumbnail.thumbnail(_THUMBNAIL_SIZE)
+
+        buffer = BytesIO()
+        thumbnail.save(buffer, format="JPEG", quality=80)
+    except Exception:
+        raise UnsupportedFile(UNSUPPORTED_FILE) from None
+
+    return buffer.getvalue()

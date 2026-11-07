@@ -9,8 +9,6 @@ services:
     env_file: ./.env
     environment:
       POSTGRES_HOST: postgres
-    volumes:
-      - uploads_data:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -120,7 +118,6 @@ services:
 
 volumes:
   postgres_data:
-  uploads_data:
   prometheus_data:
   loki_data:
   grafana_data:

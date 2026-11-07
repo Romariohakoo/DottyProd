@@ -1,127 +1,92 @@
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from uuid import uuid4
 
-import jwt
 from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.dependencies import credentials_error
 from src.core.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_access_token,
+    InvalidToken,
+    IssuedToken,
     hash_password,
+    issue_access_token,
+    issue_refresh_token,
+    read_token,
     verify_password,
 )
-from src.models.auth_session_model import AuthSessionModel
 from src.models.user_model import UserModel
 from src.repositories.auth_session_repository import AuthSessionRepository
 from src.repositories.user_repository import UserRepository
-from src.schemas.auth import TokenResponse, UserLogin, UserRegister
+from src.schemas.auth import UserLogin, UserRegister
+
+
+@dataclass(frozen=True)
+class TokenPair:
+    access: IssuedToken
+    refresh: IssuedToken
 
 
 class AuthService:
-    def __init__(self, users: UserRepository, auth_sessions: AuthSessionRepository):
-        self.users = users
-        self.auth_sessions = auth_sessions
+    def __init__(self, session: AsyncSession):
+        self.users = UserRepository(session)
+        self.auth_sessions = AuthSessionRepository(session)
 
     async def register(self, data: UserRegister) -> UserModel:
         if await self.users.get_by_email(data.email) is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Email already registered",
-            )
+            raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
         if await self.users.get_by_username(data.username) is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Username already taken",
-            )
-        return await self.users.create(
-            username=data.username,
-            email=data.email,
-            hashed_password=hash_password(data.password),
-        )
+            raise HTTPException(status.HTTP_409_CONFLICT, "Username already taken")
 
-    async def login(self, data: UserLogin) -> tuple[UserModel, TokenResponse]:
+        return await self.users.create(data.username, data.email, hash_password(data.password))
+
+    async def login(self, data: UserLogin) -> tuple[UserModel, TokenPair]:
         user = await self.users.get_by_email(data.email)
         if user is None or not verify_password(data.password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect email or password",
-            )
-        return user, await self._create_session_tokens(user.id)
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
 
-    async def refresh(self, refresh_token: str | None) -> TokenResponse:
-        user_id, session_id, refresh_token_jti = _decode_refresh_token(refresh_token)
+        session_id = str(uuid4())
+        tokens = _issue_pair(user.id, session_id)
+        await self.auth_sessions.create(session_id, user.id, tokens.refresh.jti, tokens.refresh.expires_at)
 
-        if await self.users.get_by_id(user_id) is None:
-            raise _credentials_exception()
+        return user, tokens
 
-        tokens = self._create_token_pair(user_id, session_id)
-        new_refresh_payload = decode_access_token(tokens.refresh_token)
-        refresh_expires_at = datetime.fromtimestamp(
-            new_refresh_payload["exp"], tz=timezone.utc
-        )
+    async def refresh(self, refresh_token: str | None) -> TokenPair:
+        try:
+            claims = read_token(refresh_token, "refresh")
+        except InvalidToken:
+            raise credentials_error() from None
+
+        if await self.users.get_by_id(claims.user_id) is None:
+            raise credentials_error()
+
+        tokens = _issue_pair(claims.user_id, claims.session_id)
         rotated = await self.auth_sessions.rotate_refresh_token(
-            session_id=session_id,
-            user_id=user_id,
-            current_jti=refresh_token_jti,
-            new_jti=new_refresh_payload["jti"],
-            expires_at=refresh_expires_at,
+            session_id=claims.session_id,
+            user_id=claims.user_id,
+            current_jti=claims.jti,
+            new_jti=tokens.refresh.jti,
+            expires_at=tokens.refresh.expires_at,
         )
         if not rotated:
-            raise _credentials_exception()
+            raise credentials_error()
+
         return tokens
 
-    async def logout(self, auth_session: AuthSessionModel) -> None:
-        await self.auth_sessions.revoke(auth_session.id)
+    async def logout(self, access_token: str | None, refresh_token: str | None) -> None:
+        for token, token_type in ((access_token, "access"), (refresh_token, "refresh")):
+            try:
+                claims = read_token(token, token_type)
+            except InvalidToken:
+                continue
 
-    async def logout_by_refresh_token(self, refresh_token: str | None):
-        try:
-            user_id, session_id, _ = _decode_refresh_token(refresh_token)
-        except HTTPException:
-            return
-        auth_session = await self.auth_sessions.get_active_by_id(session_id)
-        if auth_session is not None and auth_session.user_id == user_id:
-            await self.auth_sessions.revoke(session_id)
-
-    async def _create_session_tokens(self, user_id: int) -> TokenResponse:
-        session_id = str(uuid4())
-        tokens = self._create_token_pair(user_id, session_id)
-        refresh_payload = decode_access_token(tokens.refresh_token)
-        await self.auth_sessions.create(
-            session_id=session_id,
-            user_id=user_id,
-            refresh_token_jti=refresh_payload["jti"],
-            expires_at=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc),
-        )
-        return tokens
-
-    @staticmethod
-    def _create_token_pair(user_id: int, session_id: str) -> TokenResponse:
-        return TokenResponse(
-            access_token=create_access_token(str(user_id), session_id),
-            refresh_token=create_refresh_token(str(user_id), session_id),
-        )
+            auth_session = await self.auth_sessions.get_active_by_id(claims.session_id)
+            if auth_session is not None and auth_session.user_id == claims.user_id:
+                await self.auth_sessions.revoke(auth_session.id)
+                return
 
 
-def _decode_refresh_token(refresh_token: str | None) -> tuple[int, str, str]:
-    if not refresh_token:
-        raise _credentials_exception()
-    try:
-        payload = decode_access_token(refresh_token)
-        if payload.get("type") != "refresh":
-            raise ValueError
-        user_id = int(payload["sub"])
-        session_id = payload["sid"]
-        refresh_token_jti = payload["jti"]
-        if not isinstance(session_id, str) or not isinstance(refresh_token_jti, str):
-            raise ValueError
-    except (jwt.PyJWTError, TypeError, ValueError, KeyError):
-        raise _credentials_exception()
-    return user_id, session_id, refresh_token_jti
-
-
-def _credentials_exception() -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+def _issue_pair(user_id: int, session_id: str) -> TokenPair:
+    return TokenPair(
+        access=issue_access_token(user_id, session_id),
+        refresh=issue_refresh_token(user_id, session_id),
     )

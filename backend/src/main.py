@@ -29,9 +29,8 @@ async def lifespan(app: FastAPI):
 
 def create_app():
     setup_logging()
-    app = FastAPI(
-        title="Dotty", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan
-    )
+    app = FastAPI(title="Dotty", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
+
     register_exception_handlers(app)
     setup_observability(app)
 
@@ -44,6 +43,7 @@ def create_app():
             allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
             expose_headers=["X-Request-ID"],
         )
+
     app.include_router(api_router)
     return app
 

@@ -1,5 +1,3 @@
-"""Наблюдаемость: JSON-логи (собираются в Loki) и Prometheus-метрики (/metrics для Grafana)."""
-
 import json
 import logging
 import re
@@ -87,6 +85,15 @@ def _route_template(request: Request) -> str:
     return template
 
 
+def _log_level(status: int) -> int:
+    if status >= 500:
+        return logging.ERROR
+    if status >= 400:
+        return logging.WARNING
+
+    return logging.INFO
+
+
 def setup_observability(app: FastAPI) -> None:
     @app.middleware("http")
     async def observe_request(request: Request, call_next):
@@ -97,6 +104,7 @@ def setup_observability(app: FastAPI) -> None:
         token = request_id_var.set(request_id)
         started = time.perf_counter()
         status = 500
+
         try:
             response = await call_next(request)
             status = response.status_code
@@ -111,17 +119,12 @@ def setup_observability(app: FastAPI) -> None:
         finally:
             duration = time.perf_counter() - started
             handler = _route_template(request)
+
             HTTP_REQUESTS.labels(request.method, handler, f"{status // 100}xx").inc()
             HTTP_LATENCY.labels(request.method, handler).observe(duration)
 
-            if status >= 500:
-                level = logging.ERROR
-            elif status >= 400:
-                level = logging.WARNING
-            else:
-                level = logging.INFO
             access_logger.log(
-                level,
+                _log_level(status),
                 f"{request.method} {request.url.path} -> {status}",
                 extra={
                     "method": request.method,

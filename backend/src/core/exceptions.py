@@ -26,26 +26,17 @@ _DOMAIN_STATUS = {
 
 def register_exception_handlers(app):
     @app.exception_handler(HTTPException)
-    async def http_error_handler(request, exc):
-        """Формат тела ошибки. TODO поменять под требования олимпиады"""
-
+    async def http_error_handler(request: Request, exc: HTTPException):
         return JSONResponse(status_code=exc.status_code, content={"reason": exc.detail})
 
     @app.exception_handler(DomainError)
     async def domain_error_handler(request: Request, exc: DomainError):
-        status_code = 400
-        for cls in type(exc).mro():
-            if cls in _DOMAIN_STATUS:
-                status_code = _DOMAIN_STATUS[cls]
-                break
+        status_code = next((code for cls, code in _DOMAIN_STATUS.items() if isinstance(exc, cls)), 400)
         return JSONResponse(status_code=status_code, content={"reason": exc.detail})
 
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    async def validation_error_handler(request: Request, exc: RequestValidationError):
         return JSONResponse(
             status_code=422,
-            content={
-                "reason": "Validation failed",
-                "errors": jsonable_encoder(exc.errors()),
-            },
+            content={"reason": "Validation failed", "errors": jsonable_encoder(exc.errors())},
         )

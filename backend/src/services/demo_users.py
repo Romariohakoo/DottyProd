@@ -30,7 +30,7 @@ DEMO_USERS: tuple[DemoUser, ...] = (
 
 
 async def seed_demo_users(session: AsyncSession, users: tuple[DemoUser, ...] = DEMO_USERS) -> int:
-    taken = await session.execute(
+    result = await session.execute(
         select(UserModel.username, UserModel.email).where(
             or_(
                 UserModel.username.in_([user.username for user in users]),
@@ -38,10 +38,9 @@ async def seed_demo_users(session: AsyncSession, users: tuple[DemoUser, ...] = D
             )
         )
     )
-    taken_usernames, taken_emails = set(), set()
-    for username, email in taken:
-        taken_usernames.add(username)
-        taken_emails.add(email)
+    taken = result.all()
+    taken_usernames = {username for username, _ in taken}
+    taken_emails = {email for _, email in taken}
 
     rows = []
     for user in users:
