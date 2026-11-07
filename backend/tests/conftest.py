@@ -3,8 +3,6 @@ import inspect
 import os
 from pathlib import Path
 
-# lifespan ходит в БД из настроек, а не в тестовую; сид проверяется в test_demo_users.py
-os.environ.setdefault("SEED_DEMO_USERS", "false")
 os.environ.update(
     S3_ENDPOINT_URL="https://s3.amazonaws.com",
     S3_REGION="us-east-1",

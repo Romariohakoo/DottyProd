@@ -1,1 +1,1 @@
-from src.schemas.auth import UserLogin, UserRegister, UserResponse
+from src.schemas.auth import UserResponse, UserUpdate

@@ -61,6 +61,9 @@ def setup_logging(level: str = "INFO") -> None:
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.handlers = []
         uvicorn_logger.propagate = True
+    # Bot API URLs contain the bot token; HTTP client request logging is unsafe.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
     # access-лог пишет наш middleware, с request_id и длительностью
     logging.getLogger("uvicorn.access").disabled = True
 

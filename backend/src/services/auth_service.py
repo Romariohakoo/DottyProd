@@ -8,16 +8,13 @@ from src.core.dependencies import credentials_error
 from src.core.security import (
     InvalidToken,
     IssuedToken,
-    hash_password,
     issue_access_token,
     issue_refresh_token,
     read_token,
-    verify_password,
 )
 from src.models.user_model import UserModel
 from src.repositories.auth_session_repository import AuthSessionRepository
 from src.repositories.user_repository import UserRepository
-from src.schemas.auth import UserLogin, UserRegister
 
 
 @dataclass(frozen=True)
@@ -31,18 +28,10 @@ class AuthService:
         self.users = UserRepository(session)
         self.auth_sessions = AuthSessionRepository(session)
 
-    async def register(self, data: UserRegister) -> UserModel:
-        if await self.users.get_by_email(data.email) is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
-        if await self.users.get_by_username(data.username) is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Username already taken")
-
-        return await self.users.create(data.username, data.email, hash_password(data.password))
-
-    async def login(self, data: UserLogin) -> tuple[UserModel, TokenPair]:
-        user = await self.users.get_by_email(data.email)
-        if user is None or not verify_password(data.password, user.hashed_password):
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Incorrect email or password")
+    async def login_telegram(self, claims: dict) -> tuple[UserModel, TokenPair]:
+        user = await self.users.get_or_create_telegram(claims)
+        if user is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Telegram identity conflict")
 
         session_id = str(uuid4())
         tokens = _issue_pair(user.id, session_id)

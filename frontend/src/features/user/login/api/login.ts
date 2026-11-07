@@ -1,9 +1,6 @@
-import api, { setAccessToken } from "@shared/api";
+import api from "@shared/api";
 
-import type { LoginDto, LoginResDto } from "./login.dto";
+import type { LoginResDto } from "./login.dto";
 
-export const login = async (data: LoginDto) => {
-  const response = (await api.post<LoginResDto>("/auth/login", data)).data;
-  setAccessToken(response.accessToken);
-  return response;
-};
+export const login = async () =>
+  (await api.post<LoginResDto>("/auth/telegram/start")).data;

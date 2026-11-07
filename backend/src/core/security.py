@@ -3,11 +3,8 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import jwt
-from pwdlib import PasswordHash
 
 from src.core.config import settings
-
-password_hash = PasswordHash.recommended()
 
 
 @dataclass(frozen=True)
@@ -26,14 +23,6 @@ class TokenClaims:
 
 class InvalidToken(Exception):
     pass
-
-
-def hash_password(password: str) -> str:
-    return password_hash.hash(password)
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return password_hash.verify(plain_password, hashed_password)
 
 
 def issue_access_token(user_id: int, session_id: str) -> IssuedToken:

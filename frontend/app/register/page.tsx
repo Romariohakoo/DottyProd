@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { useGetMe } from "@entities/user";
-import { RegisterForm } from "@features/user/register";
+import { LoginForm } from "@features/user/login";
 
 const Register = () => {
   const router = useRouter();
@@ -33,7 +33,7 @@ const Register = () => {
         <h1 id="register-heading" className="mb-6 text-2xl font-semibold">
           Регистрация
         </h1>
-        <RegisterForm />
+        <LoginForm />
       </section>
     </main>
   );
