@@ -28,6 +28,8 @@ class NotificationDTO(BaseModel):
 
     id: int
     text: str
+    event_id: int | None
+    reminder_minutes: int | None
     notify_at: datetime
     sent_at: datetime | None
     created_at: datetime
@@ -36,3 +38,7 @@ class NotificationDTO(BaseModel):
 class TelegramLinkDTO(BaseModel):
     command: str
     expires_at: datetime
+
+
+class TelegramStatusDTO(BaseModel):
+    linked: bool

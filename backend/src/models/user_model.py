@@ -15,6 +15,7 @@ class UserModel(Timestamps, Base):
     email: Mapped[str] = mapped_column(unique=True)
     hashed_password: Mapped[str]
     telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, nullable=True)
+    telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, nullable=True)
     telegram_link_code: Mapped[str | None] = mapped_column(String(64))
     telegram_link_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     name: Mapped[str | None] = mapped_column(String(100))

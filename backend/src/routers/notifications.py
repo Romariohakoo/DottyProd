@@ -8,7 +8,7 @@ from src.core.dependencies import CurrentUser
 from src.core.domain import ConflictError, NotFoundError
 from src.db.dependencies import SessionDep
 from src.models.notification_model import NotificationModel
-from src.schemas.notification import NotificationDTO, NotificationInput, TelegramLinkDTO
+from src.schemas.notification import NotificationDTO, NotificationInput, TelegramLinkDTO, TelegramStatusDTO
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -41,6 +41,11 @@ async def create_notification(data: NotificationInput, session: SessionDep, user
     return notification
 
 
+@router.get("/telegram-status", response_model=TelegramStatusDTO)
+async def telegram_status(user: CurrentUser):
+    return TelegramStatusDTO(linked=user.telegram_chat_id is not None)
+
+
 @router.get("/{notification_id}", response_model=NotificationDTO)
 async def get_notification(notification_id: int, session: SessionDep, user: CurrentUser):
     return await owned_notification(session, user, notification_id)
@@ -49,6 +54,8 @@ async def get_notification(notification_id: int, session: SessionDep, user: Curr
 @router.put("/{notification_id}", response_model=NotificationDTO)
 async def update_notification(notification_id: int, data: NotificationInput, session: SessionDep, user: CurrentUser):
     notification = await owned_notification(session, user, notification_id)
+    if notification.event_id is not None:
+        raise ConflictError("Event reminders are managed automatically")
     if notification.sent_at is not None:
         raise ConflictError("Sent notification cannot be changed")
     notification.text = data.text
@@ -64,6 +71,8 @@ async def update_notification(notification_id: int, data: NotificationInput, ses
 @router.delete("/{notification_id}", status_code=204)
 async def delete_notification(notification_id: int, session: SessionDep, user: CurrentUser):
     notification = await owned_notification(session, user, notification_id)
+    if notification.event_id is not None:
+        raise ConflictError("Event reminders are managed automatically")
     await session.delete(notification)
     await session.commit()
 
