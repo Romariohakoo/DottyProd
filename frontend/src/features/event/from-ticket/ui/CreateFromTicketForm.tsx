@@ -28,6 +28,7 @@ import {
   type TicketKind,
   recognizeTicket,
 } from "../model/recognize";
+import { recognizeTicketWithAi } from "../api/recognize-ticket";
 
 interface CreateFromTicketFormProps {
   tripId: number;
@@ -94,7 +95,14 @@ type Values = {
 
 function matchStop(places: PlaceDto[], code?: string): StopValue | null {
   if (!code) return null;
-  const needles = [code.toLowerCase(), ...(AIRPORTS[code] ?? [])];
+  const needles = [
+    code.toLowerCase(),
+    ...(AIRPORTS[code] ?? []),
+    ...code
+      .toLowerCase()
+      .split(/[\s,()«»"-]+/)
+      .filter((word) => word.length > 3),
+  ];
   const place = places.find((item) => {
     const haystack = `${item.name} ${item.address ?? ""}`.toLowerCase();
     return needles.some((needle) => haystack.includes(needle));
@@ -153,16 +161,21 @@ export function CreateFromTicketForm({
     setPreview(URL.createObjectURL(file));
     setStep(1);
     const year = Number(trip.startDate.slice(0, 4));
-    const [found] = await Promise.all([
+    const [scanned] = await Promise.all([
       recognizeTicket(file, year),
       new Promise((resolve) => setTimeout(resolve, 900)),
     ]);
+    const found: RecognizedTicket & { arrival?: string } =
+      scanned.status === "found"
+        ? scanned
+        : await recognizeTicketWithAi(tripId, file).catch(() => scanned);
     setResult(found);
     if (found.status === "found") {
       const next: Partial<Values> = {
         number: found.number,
         date: found.date,
         departure: found.departure,
+        arrival: found.arrival,
         seat: found.seat,
         extra: found.extra,
       };

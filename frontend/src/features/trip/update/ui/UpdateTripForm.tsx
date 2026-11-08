@@ -174,9 +174,9 @@ export function UpdateTripForm({
       </div>
 
       {panel === "cover" ? (
-        <div className="m3-popover grid grid-cols-4 gap-2 p-3 sm:grid-cols-8">
+        <div className="m3-popover grid grid-cols-5 gap-2 p-3 sm:grid-cols-9">
           <label
-            className="m3-cover-upload size-full min-h-14"
+            className="m3-cover-upload aspect-[4/3] size-auto w-full"
             aria-busy={uploading}
             title="Загрузить свою"
           >

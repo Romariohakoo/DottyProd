@@ -45,3 +45,10 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     telegram_id: int | None = None
+    name: str | None = None
+    avatar_url: str | None = None
+
+
+class UserProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=100)
+    avatar_url: str | None = Field(default=None, max_length=2048)

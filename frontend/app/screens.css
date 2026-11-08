@@ -834,3 +834,10 @@
     transform: scale(1.1);
   }
 }
+
+@media (max-width: 1023px) {
+  .m3-plan:not([data-map="open"]) .m3-map-tools,
+  .m3-plan:not([data-map="open"]) .m3-map-layers {
+    display: none;
+  }
+}

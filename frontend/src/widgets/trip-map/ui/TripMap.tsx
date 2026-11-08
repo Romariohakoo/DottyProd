@@ -141,6 +141,11 @@ export function TripMap({
   orderedEvents.forEach((event, index) => {
     const next = orderedEvents[index + 1];
     if (!next) return;
+    if (
+      new Date(event.endAt ?? event.startAt).toDateString() !==
+      new Date(next.startAt).toDateString()
+    )
+      return;
     const from = exitPlace(event);
     const to = entryPlace(next);
     if (from && to)

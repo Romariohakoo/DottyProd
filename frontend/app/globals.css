@@ -750,7 +750,7 @@
     font-size: var(--type-label);
   }
   .m3-header-content {
-    @apply mx-auto flex min-h-18 w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-10;
+    @apply mx-auto flex min-h-14 w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6 lg:px-8;
   }
   .m3-header-actions {
     display: flex;
@@ -1536,9 +1536,9 @@
   }
   @media (max-width: 639px) {
     .m3-header-content {
-      min-height: 4rem;
+      min-height: 3.5rem;
       flex-wrap: nowrap;
-      padding-block: 0.625rem;
+      padding-block: 0.375rem;
     }
     .m3-header-actions {
       flex-wrap: nowrap;
