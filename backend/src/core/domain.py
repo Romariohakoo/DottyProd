@@ -30,3 +30,11 @@ class UnsupportedFile(DomainError):
 
 class FileTooLarge(DomainError):
     pass
+
+
+class RecognitionUnavailable(DomainError):
+    pass
+
+
+class RecognitionFailed(DomainError):
+    pass

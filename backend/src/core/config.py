@@ -7,6 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    openrouter_api_key: str = ""
+    ticket_model: str = "z-ai/glm-4.6v"
+
     server_port: int = 8080
 
     postgres_username: str

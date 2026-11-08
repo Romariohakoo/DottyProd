@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from src.core.domain import (
+    RecognitionUnavailable,
+    RecognitionFailed,
     ConflictError,
     DomainError,
     FileTooLarge,
@@ -15,6 +17,8 @@ from src.core.domain import (
 )
 
 _DOMAIN_STATUS = {
+    RecognitionUnavailable: 503,
+    RecognitionFailed: 502,
     NotFoundError: 404,
     ForbiddenError: 403,
     ConflictError: 409,

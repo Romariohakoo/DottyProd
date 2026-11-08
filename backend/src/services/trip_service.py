@@ -307,7 +307,8 @@ class TripService:
         if len(payload) > settings.upload_max_bytes:
             raise FileTooLarge(FILE_TOO_LARGE)
 
-        image = _inspect_image(payload)
+        image = validate_image(payload)
+        thumbnail = _make_thumbnail(payload)
         attachment = AttachmentModel(
             event_id=event.id,
             uploaded_by=user.id,
@@ -323,7 +324,7 @@ class TripService:
 
         try:
             await self.storage.save(attachment.storage_key, payload, image.mime_type)
-            await self.storage.save(attachment.thumbnail_key, image.thumbnail, _THUMBNAIL_MIME)
+            await self.storage.save(attachment.thumbnail_key, thumbnail, _THUMBNAIL_MIME)
             self.session.add(attachment)
             await self._commit()
         except Exception:
@@ -459,10 +460,9 @@ class _InspectedImage:
     extension: str
     width: int
     height: int
-    thumbnail: bytes
 
 
-def _inspect_image(payload: bytes) -> _InspectedImage:
+def validate_image(payload: bytes) -> _InspectedImage:
     try:
         with Image.open(BytesIO(payload)) as probe:
             probe.verify()
@@ -479,12 +479,13 @@ def _inspect_image(payload: bytes) -> _InspectedImage:
             raise FileTooLarge(FILE_TOO_LARGE)
 
         mime_type, extension = _IMAGE_TYPES[image.format]
-        return _InspectedImage(mime_type, extension, width, height, _make_thumbnail(image))
+        return _InspectedImage(mime_type, extension, width, height)
 
 
-def _make_thumbnail(image: Image.Image) -> bytes:
+def _make_thumbnail(payload: bytes) -> bytes:
     try:
-        thumbnail = ImageOps.exif_transpose(image).convert("RGB")
+        with Image.open(BytesIO(payload)) as image:
+            thumbnail = ImageOps.exif_transpose(image).convert("RGB")
         thumbnail.thumbnail(_THUMBNAIL_SIZE)
 
         buffer = BytesIO()
