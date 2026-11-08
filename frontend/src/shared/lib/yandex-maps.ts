@@ -5,7 +5,11 @@ import * as ReactDOM from "react-dom";
 
 import { useQuery } from "@tanstack/react-query";
 
-import { YANDEX_MAPS_API_KEY, YANDEX_SUGGEST_API_KEY } from "@shared/config";
+import {
+  YANDEX_MAPS_API_KEY,
+  YANDEX_SEARCH_API_KEY,
+  YANDEX_SUGGEST_API_KEY,
+} from "@shared/config";
 
 export function useYandexMaps() {
   return useQuery({
@@ -38,10 +42,13 @@ export function useYandexMaps() {
           timeout,
         ]);
         // The SDK locks its configuration when the first map is created.
-        if (YANDEX_SUGGEST_API_KEY) {
-          ymaps3
-            .getDefaultConfig()
-            .setApikeys({ suggest: YANDEX_SUGGEST_API_KEY });
+        if (YANDEX_SUGGEST_API_KEY || YANDEX_SEARCH_API_KEY) {
+          ymaps3.getDefaultConfig().setApikeys({
+            ...(YANDEX_SUGGEST_API_KEY
+              ? { suggest: YANDEX_SUGGEST_API_KEY }
+              : {}),
+            ...(YANDEX_SEARCH_API_KEY ? { search: YANDEX_SEARCH_API_KEY } : {}),
+          });
         }
         const boundReactify = reactify.bindTo(React, ReactDOM);
 

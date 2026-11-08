@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -10,13 +10,23 @@ import {
   EventList,
   useEventQuery,
 } from "@entities/event";
-import { PlaceDetails, PlaceList, usePlaceQuery } from "@entities/place";
+import type { LngLat } from "ymaps3";
+
+import {
+  geocodeCoordinates,
+  PlaceDetails,
+  PlaceList,
+  usePlaceQuery,
+} from "@entities/place";
 import { TripDetails, useTripQuery } from "@entities/trip";
 import { CreateEventForm } from "@features/event/create";
 import { DeleteEventButton } from "@features/event/delete";
 import { CreateFromTicketForm } from "@features/event/from-ticket";
 import { UpdateEventForm } from "@features/event/update";
-import { CreatePlaceForm } from "@features/place/create";
+import {
+  CreatePlaceForm,
+  type CreatePlaceValues,
+} from "@features/place/create";
 import { DeletePlaceButton } from "@features/place/delete";
 import { UpdatePlaceForm } from "@features/place/update";
 import { DeleteTripButton } from "@features/trip/delete";
@@ -59,8 +69,61 @@ export function TripPage({ tripId }: TripPageProps) {
   const detail = useTripQuery(tripId);
   const selectedPlace = usePlaceQuery(tripId, selectedId);
   const selectedEvent = useEventQuery(tripId, selectedId);
-  const [day, setDay] = useState<number | "all">(0);
-  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const [requestedDay, setDay] = useState<number | "all">("all");
+  const activeIdParam = searchParams?.get("active-event-id");
+  const parsedActiveId =
+    activeIdParam && /^\d+$/.test(activeIdParam) ? Number(activeIdParam) : NaN;
+  const focusedId =
+    Number.isSafeInteger(parsedActiveId) && parsedActiveId > 0
+      ? parsedActiveId
+      : null;
+  const [picking, setPicking] = useState(false);
+  const [showOrganizations, setShowOrganizations] = useState(false);
+  const [pointPending, setPointPending] = useState(false);
+  const [pointError, setPointError] = useState("");
+  const [placeDraft, setPlaceDraft] =
+    useState<Partial<CreatePlaceValues> | null>(null);
+  const [pointNotice, setPointNotice] = useState("");
+  const pointRequest = useRef<AbortController | null>(null);
+  const timelineDrag = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    scrollTop: number;
+    dragged: boolean;
+  } | null>(null);
+  const suppressTimelineClick = useRef(false);
+  const [timelineDragging, setTimelineDragging] = useState(false);
+
+  const cancelPicking = useCallback(() => {
+    pointRequest.current?.abort();
+    pointRequest.current = null;
+    setPicking(false);
+    setPointPending(false);
+    setPointError("");
+  }, []);
+
+  useEffect(() => {
+    return cancelPicking;
+  }, [tripId, searchParams, detail.data?.role, cancelPicking]);
+
+  useEffect(() => {
+    if (popupType !== "create-place") return;
+    return () => {
+      setPlaceDraft(null);
+      setPointNotice("");
+    };
+  }, [popupType, tripId]);
+
+  useEffect(() => {
+    if (!picking) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancelPicking();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [picking, cancelPicking]);
   const isSelectedPopup =
     popupType === "place" ||
     popupType === "event" ||
@@ -71,6 +134,8 @@ export function TripPage({ tripId }: TripPageProps) {
     popupType === "ticket";
 
   const closePopup = useCallback(() => {
+    setPlaceDraft(null);
+    setPointNotice("");
     const params = new URLSearchParams(searchParams?.toString());
     params.delete("open-popup-type");
     params.delete("open-popup-id");
@@ -80,6 +145,9 @@ export function TripPage({ tripId }: TripPageProps) {
   }, [pathname, router, searchParams]);
 
   const openPopup = (type: string, id?: number) => {
+    cancelPicking();
+    setPlaceDraft(null);
+    setPointNotice("");
     const params = new URLSearchParams(searchParams?.toString());
     params.set("open-popup-type", type);
     if (id === undefined) params.delete("open-popup-id");
@@ -87,7 +155,58 @@ export function TripPage({ tripId }: TripPageProps) {
     router.push(`${pathname}?${params}`, { scroll: false });
   };
 
+  const selectEvent = (id: number | null) => {
+    cancelPicking();
+    const params = new URLSearchParams(searchParams?.toString());
+    if (id === null) params.delete("active-event-id");
+    else params.set("active-event-id", String(id));
+    router.push(`${pathname}${params.size ? `?${params}` : ""}`, {
+      scroll: false,
+    });
+  };
+
+  const selectCoordinates = async (coordinates: LngLat) => {
+    if (!picking || detail.data?.role === "viewer" || !detail.data) return;
+    pointRequest.current?.abort();
+    const request = new AbortController();
+    pointRequest.current = request;
+    setPointPending(true);
+    setPointError("");
+    try {
+      const address = await geocodeCoordinates(coordinates, request.signal);
+      if (request.signal.aborted || pointRequest.current !== request) return;
+      setPlaceDraft({
+        name: "",
+        address: address ?? "",
+        longitude: coordinates[0],
+        latitude: coordinates[1],
+      });
+      setPointNotice(
+        address
+          ? ""
+          : "Адрес не найден. Координаты сохранены; укажите название и при необходимости адрес вручную.",
+      );
+      setPicking(false);
+      const params = new URLSearchParams(searchParams?.toString());
+      params.set("open-popup-type", "create-place");
+      params.delete("open-popup-id");
+      router.push(`${pathname}?${params}`, { scroll: false });
+    } catch (error) {
+      if (!request.signal.aborted && pointRequest.current === request) {
+        setPointError(
+          error instanceof Error
+            ? error.message
+            : "Не удалось определить адрес. Повторите выбор точки.",
+        );
+      }
+    } finally {
+      if (!request.signal.aborted && pointRequest.current === request)
+        setPointPending(false);
+    }
+  };
+
   const openTab = (tabId: string) => {
+    cancelPicking();
     const params = new URLSearchParams(searchParams?.toString());
     params.set("opened-tab", tabId);
     router.push(`${pathname}?${params}`, { scroll: false });
@@ -110,6 +229,28 @@ export function TripPage({ tripId }: TripPageProps) {
       ),
     [detail.data?.timeline],
   );
+
+  const focused = timeline.find((event) => event.id === focusedId) ?? null;
+
+  useEffect(() => {
+    if (activeIdParam == null || !detail.isSuccess || detail.isFetching) return;
+    if (focusedId !== null && timeline.some((event) => event.id === focusedId))
+      return;
+    const params = new URLSearchParams(searchParams?.toString());
+    params.delete("active-event-id");
+    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, {
+      scroll: false,
+    });
+  }, [
+    activeIdParam,
+    detail.isSuccess,
+    detail.isFetching,
+    focusedId,
+    timeline,
+    pathname,
+    router,
+    searchParams,
+  ]);
 
   const days = useMemo(() => {
     if (!trip) return [];
@@ -142,6 +283,13 @@ export function TripPage({ tripId }: TripPageProps) {
     return numbers;
   }, [timeline, detail.data?.places]);
 
+  const requestedRange = requestedDay === "all" ? null : days[requestedDay];
+  const focusedOutsideDay =
+    focused &&
+    requestedRange &&
+    (Date.parse(focused.startAt) >= requestedRange.end ||
+      Date.parse(focused.endAt ?? focused.startAt) < requestedRange.start);
+  const day = requestedDay;
   const range =
     day === "all" || !days[day]
       ? {
@@ -176,7 +324,6 @@ export function TripPage({ tripId }: TripPageProps) {
     hourWidth = 90;
   }
 
-  const focused = timeline.find((event) => event.id === focusedId) ?? null;
   const focusedPlaceId = focused
     ? focused.type === "movement"
       ? focused.toPlace.id
@@ -192,7 +339,7 @@ export function TripPage({ tripId }: TripPageProps) {
     ),
   );
   const mapPlaces =
-    day === "all" || !dayPlaceIds.size
+    day === "all"
       ? (detail.data?.places ?? [])
       : (detail.data?.places ?? []).filter((place) =>
           dayPlaceIds.has(place.id),
@@ -312,24 +459,86 @@ export function TripPage({ tripId }: TripPageProps) {
                     events={dayEvents}
                     numbers={placeNumbers}
                     selectedPlaceId={focusedPlaceId}
+                    selectedEventId={focused?.id ?? null}
+                    onSelectEvent={selectEvent}
+                    showOrganizations={showOrganizations}
+                    picking={picking && canEdit}
+                    onSelectCoordinates={(coordinates) => {
+                      void selectCoordinates(coordinates);
+                    }}
+                    onUnavailablePoi={() => {
+                      pointRequest.current?.abort();
+                      pointRequest.current = null;
+                      setPointPending(false);
+                      setPointError(
+                        "Добавление организации по её метке пока недоступно. Выберите точку рядом или добавьте место вручную.",
+                      );
+                    }}
                     className="h-full"
                   />
-                  <span className="m3-map-chip">
-                    <span className="m3-dot size-2 rounded-full bg-primary" />
+                  <div className="absolute top-4 left-4 z-20 flex max-w-full flex-col items-start gap-2 pr-8">
+                    {canEdit ? (
+                      <Button
+                        variant={picking ? "filled" : "tonal"}
+                        aria-pressed={picking}
+                        onClick={() => {
+                          if (picking) cancelPicking();
+                          else {
+                            setPointError("");
+                            setPointPending(false);
+                            setPicking(true);
+                          }
+                        }}
+                      >
+                        <Icon name={picking ? "close" : "pin"} size={16} />
+                        {picking ? "Отменить добавление" : "Поставить точку"}
+                      </Button>
+                    ) : null}
+                    {picking ? (
+                      <div
+                        className="max-w-72 rounded-small bg-surface-bright p-3 text-sm shadow-lg"
+                        role="status"
+                      >
+                        {pointPending
+                          ? "Определяем адрес… Можно выбрать другую точку."
+                          : "Выберите точку на карте. Escape — отмена. Место также можно добавить вручную на вкладке «Места»."}
+                      </div>
+                    ) : null}
+                    {pointError && picking ? (
+                      <div className="max-w-72 rounded-small bg-surface-bright p-3 shadow-lg">
+                        <FormError>{pointError}</FormError>
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={
+                      showOrganizations
+                        ? "Скрыть организации и транспорт"
+                        : "Показать организации и транспорт"
+                    }
+                    title={
+                      showOrganizations
+                        ? "Скрыть организации и транспорт"
+                        : "Показать организации и транспорт"
+                    }
+                    aria-pressed={showOrganizations}
+                    onClick={() => setShowOrganizations((visible) => !visible)}
+                    className={`m3-icon-button absolute top-4 right-4 z-20 !w-12 border-2 !bg-surface-bright shadow-lg hover:!bg-surface-bright ${showOrganizations ? "border-primary text-primary" : "border-transparent text-on-surface"}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="flex h-6 items-center justify-center gap-1.5"
+                    >
+                      <Icon name="buildings" size={20} />
+                      <Icon name="faBus" size={18} />
+                    </span>
+                  </button>
+                  <span className="absolute right-4 bottom-4 rounded-small bg-surface-bright px-3 py-2 text-sm font-semibold shadow-lg">
                     {day === "all"
                       ? `Вся поездка · ${detail.data.places.length} мест`
-                      : `${weekdayLabel(range.start)} · ${dayPlaceIds.size} мест · ${dayEvents.filter((event) => event.type === "movement").length} перемещ.`}
+                      : `${weekdayLabel(range.start)} · ${dayPlaceIds.size} мест`}
                   </span>
-                  {canEdit ? (
-                    <button
-                      type="button"
-                      onClick={() => openPopup("create-place")}
-                      className="m3-map-chip top-16 cursor-pointer hover:bg-surface-container"
-                    >
-                      <Icon name="pin" size={16} />
-                      Поставить точку
-                    </button>
-                  ) : null}
                 </div>
 
                 <section
@@ -380,16 +589,99 @@ export function TripPage({ tripId }: TripPageProps) {
                       </li>
                     </ul>
                   </div>
+                  {focusedOutsideDay ? (
+                    <p role="status" className="m3-support px-4 pt-2">
+                      Выбранное событие относится к другому дню и остаётся в
+                      инспекторе.{" "}
+                      <Button variant="text" onClick={() => setDay("all")}>
+                        Показать все дни
+                      </Button>
+                    </p>
+                  ) : null}
                   {dayEvents.length ? (
-                    <div className="m3-timeline-scroll">
+                    <div
+                      className={`m3-timeline-scroll select-none ${timelineDragging ? "cursor-grabbing" : "cursor-grab"}`}
+                      onPointerDown={(event) => {
+                        suppressTimelineClick.current = false;
+                        if (
+                          event.pointerType === "touch" ||
+                          event.button !== 0 ||
+                          !event.isPrimary
+                        )
+                          return;
+                        timelineDrag.current = {
+                          pointerId: event.pointerId,
+                          startX: event.clientX,
+                          startY: event.clientY,
+                          scrollLeft: event.currentTarget.scrollLeft,
+                          scrollTop: event.currentTarget.scrollTop,
+                          dragged: false,
+                        };
+                      }}
+                      onPointerMove={(event) => {
+                        const drag = timelineDrag.current;
+                        if (!drag || drag.pointerId !== event.pointerId) return;
+                        const deltaX = event.clientX - drag.startX;
+                        const deltaY = event.clientY - drag.startY;
+                        if (!drag.dragged && Math.hypot(deltaX, deltaY) < 5)
+                          return;
+                        if (!drag.dragged) {
+                          drag.dragged = true;
+                          setTimelineDragging(true);
+                          event.currentTarget.setPointerCapture(
+                            event.pointerId,
+                          );
+                        }
+                        event.preventDefault();
+                        event.currentTarget.scrollLeft =
+                          drag.scrollLeft - deltaX;
+                        event.currentTarget.scrollTop = drag.scrollTop - deltaY;
+                      }}
+                      onPointerUp={(event) => {
+                        const drag = timelineDrag.current;
+                        if (!drag || drag.pointerId !== event.pointerId) return;
+                        suppressTimelineClick.current = drag.dragged;
+                        timelineDrag.current = null;
+                        setTimelineDragging(false);
+                        if (
+                          event.currentTarget.hasPointerCapture(event.pointerId)
+                        )
+                          event.currentTarget.releasePointerCapture(
+                            event.pointerId,
+                          );
+                      }}
+                      onPointerCancel={() => {
+                        timelineDrag.current = null;
+                        suppressTimelineClick.current = false;
+                        setTimelineDragging(false);
+                      }}
+                      onPointerLeave={() => {
+                        if (!timelineDrag.current?.dragged)
+                          timelineDrag.current = null;
+                      }}
+                      onLostPointerCapture={() => {
+                        if (timelineDrag.current?.dragged)
+                          suppressTimelineClick.current = true;
+                        timelineDrag.current = null;
+                        setTimelineDragging(false);
+                      }}
+                      onClickCapture={(event) => {
+                        if (suppressTimelineClick.current && event.detail > 0) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          suppressTimelineClick.current = false;
+                        }
+                      }}
+                      onDragStart={(event) => event.preventDefault()}
+                    >
                       <EventDayTimeline
                         events={dayEvents}
                         windowStart={windowStart}
                         windowEnd={windowEnd}
                         hourWidth={hourWidth}
-                        selectedId={focusedId}
+                        selectedId={focused?.id ?? null}
                         placeNumbers={placeNumbers}
-                        onSelect={setFocusedId}
+                        onSelect={selectEvent}
                       />
                     </div>
                   ) : (
@@ -420,7 +712,7 @@ export function TripPage({ tripId }: TripPageProps) {
                   placeNumbers={placeNumbers}
                   canEdit={canEdit}
                   onEdit={(id) => openPopup("event", id)}
-                  onClose={() => setFocusedId(null)}
+                  onClose={() => selectEvent(null)}
                 />
               </aside>
             </div>
@@ -494,7 +786,17 @@ export function TripPage({ tripId }: TripPageProps) {
               ) : detail.data.role === "viewer" ? (
                 <FormError>Недостаточно прав для создания.</FormError>
               ) : popupType === "create-place" ? (
-                <CreatePlaceForm tripId={tripId} onSuccess={closePopup} />
+                <>
+                  {pointNotice ? (
+                    <StatusMessage>{pointNotice}</StatusMessage>
+                  ) : null}
+                  <CreatePlaceForm
+                    key={`create-place-${tripId}-${placeDraft?.longitude ?? "manual"}-${placeDraft?.latitude ?? ""}`}
+                    tripId={tripId}
+                    initialValues={placeDraft ?? undefined}
+                    onSuccess={closePopup}
+                  />
+                </>
               ) : popupType === "ticket" ? (
                 <CreateFromTicketForm
                   tripId={tripId}
@@ -562,8 +864,17 @@ export function TripPage({ tripId }: TripPageProps) {
                       tripId={tripId}
                       eventId={selectedEvent.data.id}
                       onSuccess={() => {
-                        setFocusedId(null);
-                        closePopup();
+                        const params = new URLSearchParams(
+                          searchParams?.toString(),
+                        );
+                        params.delete("open-popup-type");
+                        params.delete("open-popup-id");
+                        if (focusedId === selectedId)
+                          params.delete("active-event-id");
+                        router.replace(
+                          `${pathname}${params.size ? `?${params}` : ""}`,
+                          { scroll: false },
+                        );
                       }}
                     />
                   ) : null}

@@ -3,6 +3,8 @@ export const YANDEX_MAPS_API_KEY =
   process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY ?? "";
 export const YANDEX_SUGGEST_API_KEY =
   process.env.NEXT_PUBLIC_YANDEX_SUGGEST_API_KEY ?? "";
+export const YANDEX_SEARCH_API_KEY =
+  process.env.NEXT_PUBLIC_YANDEX_SEARCH_API_KEY ?? "";
 export const YANDEX_GEOCODER_API_KEY =
   process.env.NEXT_PUBLIC_YANDEX_GEOCODER_API_KEY ?? "";
 

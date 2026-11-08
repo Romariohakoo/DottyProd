@@ -11,13 +11,26 @@ import { type CreatePlaceValues, createPlaceSchema } from "../model/validation";
 
 interface CreatePlaceFormProps {
   tripId: number;
+  initialValues?: Partial<CreatePlaceValues>;
   onSuccess?: () => void;
 }
 
-export function CreatePlaceForm({ tripId, onSuccess }: CreatePlaceFormProps) {
+export function CreatePlaceForm({
+  tripId,
+  initialValues,
+  onSuccess,
+}: CreatePlaceFormProps) {
   const { mutate, isPending, error } = useCreatePlaceMutation(tripId);
+  const hasInitialCoordinates =
+    Number.isFinite(initialValues?.latitude) &&
+    Number.isFinite(initialValues?.longitude);
   const form = useForm<CreatePlaceValues>({
-    defaultValues: { name: "", address: "", latitude: NaN, longitude: NaN },
+    defaultValues: {
+      name: initialValues?.name ?? "",
+      address: initialValues?.address ?? "",
+      latitude: initialValues?.latitude ?? NaN,
+      longitude: initialValues?.longitude ?? NaN,
+    },
     mode: "onTouched",
     resolver: zodResolver(createPlaceSchema),
   });
@@ -75,8 +88,10 @@ export function CreatePlaceForm({ tripId, onSuccess }: CreatePlaceFormProps) {
           }
           onAddressChange={(value) => {
             form.setValue("address", value, { shouldDirty: true });
-            form.resetField("latitude");
-            form.resetField("longitude");
+            if (!hasInitialCoordinates) {
+              form.resetField("latitude");
+              form.resetField("longitude");
+            }
             form.clearErrors(["address", "latitude", "longitude"]);
           }}
           onSelect={(result) => {

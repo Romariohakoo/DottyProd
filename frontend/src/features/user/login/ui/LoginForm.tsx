@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { users } from "@shared/config";
-import { Button, FormError, FormField, SubmitButton } from "@shared/ui";
+import { FormError, FormField, SubmitButton } from "@shared/ui";
 
 import { startTelegramLogin } from "../api/login";
 import { useLoginMutation } from "../model/use-login-mutation";

@@ -13,6 +13,10 @@ const PATHS = {
   train:
     "M7 3h10a2 2 0 0 1 2 2v9a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2zM5 10h14M8 21l2-4M16 21l-2-4",
   bus: "M6 3h12a2 2 0 0 1 2 2v12H4V5a2 2 0 0 1 2-2zM4 11h16M7 17v3M17 17v3",
+  faBus:
+    "M488 128h-16V80c0-44.8-99.2-80-224-80S24 35.2 24 80v48H8c-4.42 0-8 3.58-8 8v80c0 4.42 3.58 8 8 8h16v200c0 13.25 10.75 24 24 24h24c13.25 0 24-10.75 24-24v-24h304v24c0 13.25 10.75 24 24 24h24c13.25 0 24-10.75 24-24V224h16c4.42 0 8-3.58 8-8v-80c0-4.42-3.58-8-8-8zM96 64h304v128H96V64zm16 288c-17.67 0-32-14.33-32-32s14.33-32 32-32 32 14.33 32 32-14.33 32-32 32zm272 0c-17.67 0-32-14.33-32-32s14.33-32 32-32 32 14.33 32 32-14.33 32-32 32z",
+  buildings:
+    "M4 21V7a1 1 0 0 1 1-1h7v15M12 11h6a1 1 0 0 1 1 1v9M7 9h2M7 12h2M7 15h2M15 14h1M15 17h1M3 21h18",
   car: "M5 17h14v-5l-1.8-4.5a1 1 0 0 0-.9-.5H7.7a1 1 0 0 0-.9.5L5 12zM5 12h14M7 17v2M17 17v2",
   walk: "M13 4.5a1.5 1.5 0 1 0 0-3a1.5 1.5 0 0 0 0 3zM10 21l2-6 3 3v3M8 12l2-5 4 2 2 3M12 15l-1-4",
   pin: "M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11zM12 12a2 2 0 1 0 0-4a2 2 0 0 0 0 4z",
@@ -46,13 +50,15 @@ interface IconProps {
 }
 
 export function Icon({ name, size = 20, className = "" }: IconProps) {
+  const filled = name === "faBus";
   return (
     <svg
-      viewBox="0 0 24 24"
+      viewBox={filled ? "0 0 512 448" : "0 0 24 24"}
+      preserveAspectRatio={filled ? "xMidYMax meet" : undefined}
       width={size}
       height={size}
-      fill="none"
-      stroke="currentColor"
+      fill={filled ? "currentColor" : "none"}
+      stroke={filled ? "none" : "currentColor"}
       strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
