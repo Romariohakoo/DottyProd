@@ -40,7 +40,7 @@ async def schedule_event_reminders() -> None:
             return
         await session.execute(text("""
             DELETE FROM notifications n
-            WHERE n.event_id IS NOT NULL AND n.sent_at IS NULL AND NOT EXISTS (
+            WHERE n.reminder_minutes IS NOT NULL AND n.sent_at IS NULL AND NOT EXISTS (
                 SELECT 1 FROM events e JOIN trips t ON t.id = e.trip_id
                 WHERE e.id = n.event_id AND e.start_at = n.event_start_at
                   AND e.start_at >= now() - interval '10 minutes'
@@ -69,7 +69,7 @@ async def schedule_event_reminders() -> None:
         await session.execute(text("""
             UPDATE notifications n SET text =
                 CASE WHEN n.reminder_minutes = 60 THEN 'Скоро событие: ' ELSE 'Событие начинается: ' END || e.title
-            FROM events e WHERE n.event_id = e.id AND n.sent_at IS NULL
+            FROM events e WHERE n.event_id = e.id AND n.reminder_minutes IS NOT NULL AND n.sent_at IS NULL
                 AND n.event_start_at = e.start_at
         """))
         await session.commit()

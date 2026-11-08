@@ -3,13 +3,14 @@ from secrets import token_urlsafe
 
 import httpx
 from fastapi import APIRouter
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from src.core.config import settings
 from src.core.dependencies import CurrentUser
 from src.core.domain import ConflictError, NotFoundError
 from src.db.dependencies import SessionDep
 from src.models.notification_model import NotificationModel
+from src.models.trip_model import EventModel, TripMemberModel, TripModel
 from src.models.user_model import UserModel
 from src.schemas.notification import NotificationDTO, NotificationInput, TelegramLinkDTO, TelegramStatusDTO
 from src.services.telegram_notifications import telegram_call
@@ -26,6 +27,19 @@ async def owned_notification(session: SessionDep, user: CurrentUser, notificatio
     return notification
 
 
+async def require_accessible_event(session: SessionDep, user: CurrentUser, event_id: int | None) -> None:
+    if event_id is None:
+        return
+    event = await session.scalar(
+        select(EventModel.id)
+        .join(TripModel, TripModel.id == EventModel.trip_id)
+        .outerjoin(TripMemberModel, (TripMemberModel.trip_id == TripModel.id) & (TripMemberModel.user_id == user.id))
+        .where(EventModel.id == event_id, or_(TripModel.owner_id == user.id, TripMemberModel.user_id == user.id))
+    )
+    if event is None:
+        raise NotFoundError("Event not found")
+
+
 @router.get("", response_model=list[NotificationDTO])
 async def list_notifications(session: SessionDep, user: CurrentUser):
     result = await session.scalars(
@@ -36,8 +50,9 @@ async def list_notifications(session: SessionDep, user: CurrentUser):
 
 @router.post("", response_model=NotificationDTO, status_code=201)
 async def create_notification(data: NotificationInput, session: SessionDep, user: CurrentUser):
+    await require_accessible_event(session, user, data.event_id)
     notification = NotificationModel(
-        user_id=user.id, text=data.text, notify_at=data.notify_at, next_attempt_at=data.notify_at
+        user_id=user.id, event_id=data.event_id, text=data.text, notify_at=data.notify_at, next_attempt_at=data.notify_at
     )
     session.add(notification)
     await session.commit()
@@ -61,10 +76,13 @@ async def get_notification(notification_id: int, session: SessionDep, user: Curr
 @router.put("/{notification_id}", response_model=NotificationDTO)
 async def update_notification(notification_id: int, data: NotificationInput, session: SessionDep, user: CurrentUser):
     notification = await owned_notification(session, user, notification_id)
-    if notification.event_id is not None:
+    if notification.reminder_minutes is not None:
         raise ConflictError("Event reminders are managed automatically")
     if notification.sent_at is not None:
         raise ConflictError("Sent notification cannot be changed")
+    if "event_id" in data.model_fields_set:
+        await require_accessible_event(session, user, data.event_id)
+        notification.event_id = data.event_id
     notification.text = data.text
     notification.notify_at = data.notify_at
     notification.next_attempt_at = data.notify_at
@@ -78,7 +96,7 @@ async def update_notification(notification_id: int, data: NotificationInput, ses
 @router.delete("/{notification_id}", status_code=204)
 async def delete_notification(notification_id: int, session: SessionDep, user: CurrentUser):
     notification = await owned_notification(session, user, notification_id)
-    if notification.event_id is not None:
+    if notification.reminder_minutes is not None:
         raise ConflictError("Event reminders are managed automatically")
     await session.delete(notification)
     await session.commit()

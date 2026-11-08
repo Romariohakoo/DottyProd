@@ -191,3 +191,47 @@ def test_link_discovers_bot_username_and_reports_configuration(client, monkeypat
     code = response.json()["command"].split()[1]
     assert response.json()["bot_url"] == f"https://t.me/discovered_bot?start={code}"
     assert client.get(f"{URL}/telegram-status", headers=headers).json() == {"linked": False, "bot_enabled": True}
+
+
+def test_manual_notification_event_link_and_access(client, db_session, monkeypatch):
+    from src.models.trip_model import EventModel, TripMemberModel
+    from src.services import telegram_notifications
+    from tests.test_trips import _trip
+
+    owner_id, owner = _register(client, "eventowner", "eventowner@example.com")
+    member_id, member = _register(client, "eventmember", "eventmember@example.com")
+    _, outsider = _register(client, "outsider", "outsider@example.com")
+    start = datetime.now(timezone.utc) + timedelta(hours=3)
+
+    async def setup(session):
+        trip = _trip(owner_id, "Trip", start.date())
+        session.add(trip)
+        await session.flush()
+        session.add(TripMemberModel(trip_id=trip.id, user_id=member_id, role="viewer"))
+        event = EventModel(trip_id=trip.id, created_by=owner_id, type="activity", title="Event",
+                           start_at=start, category="walk")
+        session.add(event)
+        await session.flush()
+        return event.id
+
+    event_id = db_session(setup)
+    payload = {"text": "Manual reminder", "notify_at": start.isoformat(), "event_id": event_id}
+    assert client.post(URL, headers=outsider, json=payload).status_code == 404
+    assert client.post(URL, headers=owner, json={**payload, "event_id": 999999}).status_code == 404
+    assert client.post(URL, headers=owner, json={**payload, "event_id": 0}).status_code == 422
+    created = client.post(URL, headers=member, json=payload)
+    assert created.status_code == 201
+    assert created.json()["event_id"] == event_id
+    notification_id = created.json()["id"]
+    assert client.get(f"{URL}/{notification_id}", headers=member).json()["event_id"] == event_id
+    assert client.get(URL, headers=member).json()[0]["event_id"] == event_id
+
+    monkeypatch.setattr(telegram_notifications, "SessionLocal", client.app.state.test_session_factory)
+    asyncio.run(telegram_notifications.schedule_event_reminders())
+    assert client.get(f"{URL}/{notification_id}", headers=member).json()["text"] == "Manual reminder"
+    updated = client.put(f"{URL}/{notification_id}", headers=member, json={"text": "Edited", "notify_at": start.isoformat()})
+    assert updated.status_code == 200 and updated.json()["event_id"] == event_id
+    assert client.put(f"{URL}/{notification_id}", headers=member, json={**payload, "event_id": 999999}).status_code == 404
+    cleared = client.put(f"{URL}/{notification_id}", headers=member, json={**payload, "event_id": None})
+    assert cleared.status_code == 200 and cleared.json()["event_id"] is None
+    assert client.delete(f"{URL}/{notification_id}", headers=member).status_code == 204

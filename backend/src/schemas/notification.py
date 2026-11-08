@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class NotificationInput(BaseModel):
     text: str = Field(min_length=1, max_length=4096)
     notify_at: datetime
+    event_id: int | None = Field(default=None, gt=0)
 
     @field_validator("text")
     @classmethod
