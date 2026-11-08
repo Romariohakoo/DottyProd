@@ -75,7 +75,7 @@ deploy:
     - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa && chmod 400 ~/.ssh/id_rsa
     - printf "Host *\n  StrictHostKeyChecking no\n" > ~/.ssh/config
   script:
-    - printf '\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_NOTIFICATIONS_ENABLED=true\nFRONTEND_IMAGE_NAME=%s\nBACKEND_IMAGE_NAME=%s\n' "${TELEGRAM_BOT_TOKEN:-}" "$FRONTEND_IMAGE_NAME" "$BACKEND_IMAGE_NAME" >> "$BACKEND_ENV"
+    - printf '\nCOMPOSE_PROFILES=prod\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_NOTIFICATIONS_ENABLED=true\nFRONTEND_IMAGE_NAME=%s\nBACKEND_IMAGE_NAME=%s\n' "${TELEGRAM_BOT_TOKEN:-}" "$FRONTEND_IMAGE_NAME" "$BACKEND_IMAGE_NAME" >> "$BACKEND_ENV"
     - ssh $VM "mkdir -p ~/app && rm -rf ~/app/monitoring"
     - scp -r deploy/docker-compose.yaml deploy/nginx.conf deploy/Caddyfile deploy/monitoring "$SPIRIT_DOCKER_SA_KEY" $VM:~/app/
     - scp "$BACKEND_ENV" $VM:~/app/.env
