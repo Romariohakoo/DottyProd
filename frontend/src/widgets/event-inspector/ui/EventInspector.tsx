@@ -156,7 +156,9 @@ export function EventInspector({
                 {event.fromPlace.name} → {event.toPlace.name}
               </li>
             ) : event.place &&
-              (event.place.name !== event.title || event.place.address) ? (
+              (event.place.name !== event.title ||
+                event.place.address ||
+                event.place.description) ? (
               <li className="flex items-start gap-2">
                 <Icon
                   name="pin"
@@ -170,6 +172,11 @@ export function EventInspector({
                   {event.place.address ? (
                     <span className="block text-on-surface-variant">
                       {event.place.address}
+                    </span>
+                  ) : null}
+                  {event.place.description ? (
+                    <span className="block text-on-surface-variant">
+                      {event.place.description}
                     </span>
                   ) : null}
                 </span>

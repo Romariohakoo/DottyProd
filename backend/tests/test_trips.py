@@ -275,6 +275,7 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
         "id": ids["kremlin_id"],
         "name": "Казанский Кремль",
         "address": "Казань",
+        "description": None,
         "latitude": 55.798,
         "longitude": 49.106,
     }
@@ -291,6 +292,7 @@ def test_get_trip_returns_places_and_timeline(client, db_session):
         "id": ids["unnamed_id"],
         "name": "Точка на карте",
         "address": None,
+        "description": None,
         "latitude": 55.75,
         "longitude": 49.1,
     }

@@ -21,6 +21,10 @@ export function PlaceDetails({ place }: PlaceDetailsProps) {
           <dd>{place.address ?? "Не указан"}</dd>
         </div>
         <div className="m3-detail-row">
+          <dt>Описание</dt>
+          <dd>{place.description ?? "Не указано"}</dd>
+        </div>
+        <div className="m3-detail-row">
           <dt>Широта</dt>
           <dd>{place.latitude}</dd>
         </div>

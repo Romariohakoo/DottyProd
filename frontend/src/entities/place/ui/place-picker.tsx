@@ -136,7 +136,14 @@ export function PlacePicker({
         </div>
         {maps.data ? (
           <PlaceMap
-            places={[{ id: -1, ...value, address: value.address ?? null }]}
+            places={[
+              {
+                id: -1,
+                ...value,
+                address: value.address ?? null,
+                description: value.description ?? null,
+              },
+            ]}
             className="h-40 w-full overflow-hidden rounded-medium"
           />
         ) : null}

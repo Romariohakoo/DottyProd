@@ -235,7 +235,9 @@ export function PlaceMap({
         {places?.map((place) => {
           const number = numbers?.get(place.id);
           const selected = place.id === selectedPlaceId;
-          const label = [place.name, place.address].filter(Boolean).join(", ");
+          const label = [place.name, place.address, place.description]
+            .filter(Boolean)
+            .join(", ");
           return (
             <YMapMarker
               key={place.id}
@@ -441,7 +443,9 @@ function SchemeMap({
         const [left, top] = point([place.longitude, place.latitude]);
         const number = numbers?.get(place.id);
         const selected = place.id === selectedPlaceId;
-        const label = [place.name, place.address].filter(Boolean).join(", ");
+        const label = [place.name, place.address, place.description]
+          .filter(Boolean)
+          .join(", ");
         return (
           <div
             key={place.id}

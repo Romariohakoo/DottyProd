@@ -272,15 +272,17 @@ def test_place_crud_and_used_place_conflict(client, db_session):
     assert created.status_code == 201, created.json()
     place_id = created.json()["id"]
     assert created.json()["latitude"] == 55.798
+    assert created.json()["description"] is None
 
     updated = client.put(
         f"{TRIPS_URL}/{trip_id}/places/{place_id}",
         headers=anna_headers,
-        json=_place_payload(name="Кремль"),
+        json=_place_payload(name="Кремль", description="вид на Волгу"),
     )
     assert updated.status_code == 200
     assert updated.json()["name"] == "Кремль"
     assert updated.json()["latitude"] == 55.798
+    assert updated.json()["description"] == "вид на Волгу"
 
     event = client.post(
         f"{TRIPS_URL}/{trip_id}/events",
@@ -303,6 +305,58 @@ def test_place_crud_and_used_place_conflict(client, db_session):
     leftover = client.get(f"{TRIPS_URL}/{trip_id}", headers=anna_headers).json()
     assert leftover["places"] == []
     assert leftover["timeline"] == []
+
+
+def test_place_description_is_optional(client):
+    _, headers = _register(client, "anna", "anna@example.com")
+    trip_id = _create_trip(client, headers)["id"]
+    places_url = f"{TRIPS_URL}/{trip_id}/places"
+
+    omitted = client.post(places_url, headers=headers, json=_place_payload())
+    assert omitted.status_code == 201, omitted.json()
+    omitted_id = omitted.json()["id"]
+    assert omitted.json()["description"] is None
+
+    noted = client.post(
+        places_url,
+        headers=headers,
+        json=_place_payload(name="Башня Сююмбике", description="подъём на смотровую"),
+    )
+    assert noted.status_code == 201, noted.json()
+    noted_id = noted.json()["id"]
+    assert noted.json()["description"] == "подъём на смотровую"
+
+    changed = client.put(
+        f"{places_url}/{noted_id}",
+        headers=headers,
+        json=_place_payload(name="Башня Сююмбике", description="билеты на входе"),
+    )
+    assert changed.status_code == 200, changed.json()
+    assert changed.json()["description"] == "билеты на входе"
+
+    cleared = client.put(
+        f"{places_url}/{noted_id}",
+        headers=headers,
+        json=_place_payload(name="Башня Сююмбике", description=None),
+    )
+    assert cleared.status_code == 200, cleared.json()
+    assert cleared.json()["description"] is None
+
+    event = client.post(
+        f"{TRIPS_URL}/{trip_id}/events",
+        headers=headers,
+        json=_activity_payload(
+            place=_place_payload(name="Мечеть Кул-Шариф", description="закрывается в 21:00"),
+        ),
+    )
+    assert event.status_code == 201, event.json()
+    assert event.json()["place"]["description"] == "закрывается в 21:00"
+
+    detail = client.get(f"{TRIPS_URL}/{trip_id}", headers=headers).json()
+    by_id = {place["id"]: place["description"] for place in detail["places"]}
+    assert by_id[omitted_id] is None
+    assert by_id[noted_id] is None
+    assert by_id[event.json()["place"]["id"]] == "закрывается в 21:00"
 
 
 def test_create_activity_with_and_without_place(client, db_session):

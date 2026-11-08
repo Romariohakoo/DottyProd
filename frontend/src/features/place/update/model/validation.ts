@@ -10,6 +10,7 @@ export const updatePlaceSchema = z.object({
     .string()
     .trim()
     .max(1000, "Адрес должен содержать не более 1000 символов"),
+  description: z.string(),
   latitude: z
     .number({ error: "Введите широту числом" })
     .finite("Введите конечное число")

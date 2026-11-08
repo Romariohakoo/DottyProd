@@ -36,6 +36,7 @@ export interface PlaceDto {
   id: number;
   name: string;
   address: string | null;
+  description: string | null;
   latitude: number;
   longitude: number;
 }
@@ -97,6 +98,7 @@ export interface PlaceInputDto {
   clientRequestId?: string;
   name: string;
   address?: string | null;
+  description?: string | null;
   latitude: number;
   longitude: number;
 }

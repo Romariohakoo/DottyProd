@@ -198,7 +198,7 @@ export function TripMap({
                   return (
                     <span
                       role="img"
-                      aria-label={[place.name, place.address]
+                      aria-label={[place.name, place.address, place.description]
                         .filter(Boolean)
                         .join(", ")}
                       title={place.name}

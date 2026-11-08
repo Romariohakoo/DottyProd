@@ -53,6 +53,11 @@ export function PlaceList({ places, numbers, onSelect }: PlaceListProps) {
                       {place.address}
                     </span>
                   ) : null}
+                  {place.description ? (
+                    <span className="block truncate text-sm text-on-surface-variant">
+                      {place.description}
+                    </span>
+                  ) : null}
                 </span>
                 <Icon
                   name="next"

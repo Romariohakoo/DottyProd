@@ -44,11 +44,13 @@ def test_place_created_dto_omits_empty_recommendation():
         id=1,
         name="Кремль",
         address=None,
+        description=None,
         latitude=55.798,
         longitude=49.106,
     ).model_dump(mode="json")
 
     assert dumped["address"] is None
+    assert dumped["description"] is None
     assert "recommendation" not in dumped
 
 
@@ -57,6 +59,7 @@ def test_place_created_dto_keeps_recommendation():
         id=1,
         name="Кремль",
         address="Казань",
+        description="вид на Волгу",
         latitude=55.798,
         longitude=49.106,
         recommendation=PlaceRecommendation(name="Эрмитаж", latitude=59.939832, longitude=30.314560),

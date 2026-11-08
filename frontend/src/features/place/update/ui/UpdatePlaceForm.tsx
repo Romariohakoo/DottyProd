@@ -31,6 +31,7 @@ export function UpdatePlaceForm({
     defaultValues: {
       name: place.name,
       address: place.address ?? "",
+      description: place.description ?? "",
       latitude: place.latitude,
       longitude: place.longitude,
     },
@@ -49,6 +50,7 @@ export function UpdatePlaceForm({
       {
         name: values.name.trim(),
         address: values.address.trim() || null,
+        description: values.description.trim() || null,
         latitude: values.latitude,
         longitude: values.longitude,
       },
@@ -89,6 +91,13 @@ export function UpdatePlaceForm({
             />
           </span>
         </div>
+        <textarea
+          {...register("description")}
+          rows={3}
+          aria-label="Описание"
+          placeholder="Описание — необязательно"
+          className="resize-none rounded-xlarge border border-outline-variant bg-surface-bright px-3 py-2 text-sm leading-relaxed outline-none placeholder:text-on-surface-variant hover:bg-surface-container-low focus:bg-surface-container-low"
+        />
         <div className="flex flex-wrap">
           <PlaceCombobox
             large

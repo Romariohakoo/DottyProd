@@ -58,6 +58,7 @@ class PlaceModel(Timestamps, Base):
     trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     address: Mapped[str | None] = mapped_column(String(1000))
+    description: Mapped[str | None] = mapped_column(Text)
     latitude: Mapped[float]
     longitude: Mapped[float]
     client_request_id: Mapped[UUID | None]

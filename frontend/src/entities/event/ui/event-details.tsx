@@ -73,7 +73,14 @@ export function EventDetails({ event }: EventDetailsProps) {
               <dt className="m3-label">Место</dt>
               <dd>
                 {event.place
-                  ? `${event.place.name}, ${event.place.address ?? "адрес не указан"}, ${event.place.latitude}, ${event.place.longitude}`
+                  ? [
+                      event.place.name,
+                      event.place.address ?? "адрес не указан",
+                      event.place.description,
+                      `${event.place.latitude}, ${event.place.longitude}`,
+                    ]
+                      .filter(Boolean)
+                      .join(", ")
                   : "Не указано"}
               </dd>
             </div>
@@ -87,17 +94,27 @@ export function EventDetails({ event }: EventDetailsProps) {
             <div className="m3-detail-row">
               <dt className="m3-label">Откуда</dt>
               <dd>
-                {event.fromPlace.name},{" "}
-                {event.fromPlace.address ?? "адрес не указан"},{" "}
-                {event.fromPlace.latitude}, {event.fromPlace.longitude}
+                {[
+                  event.fromPlace.name,
+                  event.fromPlace.address ?? "адрес не указан",
+                  event.fromPlace.description,
+                  `${event.fromPlace.latitude}, ${event.fromPlace.longitude}`,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
               </dd>
             </div>
             <div className="m3-detail-row">
               <dt className="m3-label">Куда</dt>
               <dd>
-                {event.toPlace.name},{" "}
-                {event.toPlace.address ?? "адрес не указан"},{" "}
-                {event.toPlace.latitude}, {event.toPlace.longitude}
+                {[
+                  event.toPlace.name,
+                  event.toPlace.address ?? "адрес не указан",
+                  event.toPlace.description,
+                  `${event.toPlace.latitude}, ${event.toPlace.longitude}`,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
               </dd>
             </div>
           </>

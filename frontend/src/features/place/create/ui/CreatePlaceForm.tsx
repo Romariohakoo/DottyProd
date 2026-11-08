@@ -28,6 +28,7 @@ export function CreatePlaceForm({
     defaultValues: {
       name: initialValues?.name ?? "",
       address: initialValues?.address ?? "",
+      description: initialValues?.description ?? "",
       latitude: initialValues?.latitude ?? NaN,
       longitude: initialValues?.longitude ?? NaN,
     },
@@ -48,6 +49,7 @@ export function CreatePlaceForm({
         ...values,
         name: values.name.trim(),
         address: values.address.trim() || null,
+        description: values.description.trim() || null,
       },
       { onSuccess },
     );
@@ -68,6 +70,13 @@ export function CreatePlaceForm({
           maxLength={200}
           error={errors.name?.message}
           {...register("name")}
+        />
+        <FormField
+          label="Описание — необязательно"
+          type="text"
+          placeholder="Что здесь посмотреть"
+          error={errors.description?.message}
+          {...register("description")}
         />
         <input
           type="hidden"

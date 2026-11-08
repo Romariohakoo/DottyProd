@@ -55,6 +55,7 @@ class TripInput(Strict):
 class PlaceInput(Strict):
     name: Title
     address: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None
+    description: str | None = None
     latitude: float = Field(ge=-90, le=90, allow_inf_nan=False)
     longitude: float = Field(ge=-180, le=180, allow_inf_nan=False)
     client_request_id: UUID | None = None
@@ -129,6 +130,7 @@ class PlaceDTO(FromORM):
     id: int
     name: str
     address: str | None
+    description: str | None
     latitude: float
     longitude: float
 
