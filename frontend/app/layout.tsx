@@ -40,20 +40,39 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               <Link href="/" className="m3-brand" aria-label="Dotty — главная">
                 <svg
                   className="m3-brand-mark"
-                  viewBox="0 0 34 34"
+                  viewBox="0 0 512 512"
                   aria-hidden="true"
                 >
                   <path
-                    d="M8 26 C 8 14, 26 20, 26 8"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeDasharray="0.1 5"
-                    strokeLinecap="round"
+                    fill="#f2f1ff"
+                    d="M256 0C450 0 512 62 512 256S450 512 256 512 0 450 0 256 62 0 256 0Z"
                   />
-                  <circle cx="8" cy="26" r="5" fill="currentColor" />
-                  <circle cx="26" cy="8" r="5" fill="currentColor" />
-                  <circle cx="17" cy="17" r="3" fill="#d9f35b" />
+                  <path
+                    fill="currentColor"
+                    d="M300 96C376 96 432 152 432 226 432 318 300 420 300 420S168 318 168 226C168 152 224 96 300 96Z"
+                  />
+                  <circle cx="300" cy="226" r="48" fill="#d9f35b" />
+                  <circle
+                    cx="92"
+                    cy="388"
+                    r="18"
+                    fill="currentColor"
+                    opacity=".35"
+                  />
+                  <circle
+                    cx="148"
+                    cy="404"
+                    r="18"
+                    fill="currentColor"
+                    opacity=".6"
+                  />
+                  <circle
+                    cx="208"
+                    cy="412"
+                    r="18"
+                    fill="currentColor"
+                    opacity=".85"
+                  />
                 </svg>
                 dotty
               </Link>

@@ -591,8 +591,8 @@
   }
   .m3-brand-mark {
     display: block;
-    width: 2.125rem;
-    height: 2.125rem;
+    width: 2.25rem;
+    height: 2.25rem;
     color: var(--primary);
   }
   .m3-skip-link {

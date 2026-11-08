@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Dotty">
+  <path fill="#F2F1FF" d="M256 0C450 0 512 62 512 256S450 512 256 512 0 450 0 256 62 0 256 0Z"/>
+  <path fill="#5F59FF" d="M300 96C376 96 432 152 432 226 432 318 300 420 300 420S168 318 168 226C168 152 224 96 300 96Z"/>
+  <circle cx="300" cy="226" r="48" fill="#D9F35B"/>
+  <circle cx="92" cy="388" r="18" fill="#5F59FF" opacity=".35"/>
+  <circle cx="148" cy="404" r="18" fill="#5F59FF" opacity=".6"/>
+  <circle cx="208" cy="412" r="18" fill="#5F59FF" opacity=".85"/>
+</svg>
