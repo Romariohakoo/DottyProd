@@ -24,7 +24,7 @@ import api, {
   tripQueryKeys,
 } from "@shared/api";
 import { getEventScheduleError } from "@shared/lib";
-import { Icon, type IconName } from "@shared/ui";
+import { Icon, type IconName, SelectMenu, TimeInput } from "@shared/ui";
 
 import { createEvent } from "../api/create-event";
 import {
@@ -509,11 +509,11 @@ function MovementCard({
           />
           <label className="flex w-28 shrink-0 flex-col items-end gap-0.5">
             {caption(depLabel)}
-            <input
-              type="time"
+            <TimeInput
               value={departure}
-              onChange={(event) => setDeparture(event.target.value)}
-              className="m3-time h-9 w-full"
+              onChange={setDeparture}
+              aria-label={depLabel}
+              className="w-full"
             />
           </label>
         </div>
@@ -552,11 +552,11 @@ function MovementCard({
           {scheduled ? (
             <label className="flex w-28 shrink-0 flex-col items-end gap-0.5">
               {caption(arrLabel, arrivalEstimated && Boolean(arrivalShown))}
-              <input
-                type="time"
+              <TimeInput
                 value={arrivalShown}
-                onChange={(event) => setArrival(event.target.value || null)}
-                className={`m3-time h-9 w-full ${arrivalEstimated ? "text-on-surface-variant" : ""}`}
+                onChange={(value) => setArrival(value || null)}
+                aria-label={arrLabel}
+                className={`w-full ${arrivalEstimated ? "text-on-surface-variant" : ""}`}
               />
             </label>
           ) : (
@@ -658,24 +658,18 @@ function StayCard({
   ) => (
     <div className="flex flex-1 flex-col gap-2 rounded-large bg-surface-container-low p-3.5">
       <span className="m3-ticket-key">{label}</span>
-      <select
+      <SelectMenu
         value={value.day}
-        onChange={(event) => onChange({ ...value, day: event.target.value })}
+        onChange={(day) => onChange({ ...value, day })}
         aria-label={`${label}: день`}
-        className="cursor-pointer bg-transparent text-lg font-extrabold outline-none"
-      >
-        {days.map((day) => (
-          <option key={day} value={day}>
-            {dayLabel(day)}
-          </option>
-        ))}
-      </select>
-      <input
-        type="time"
+        options={days.map((day) => ({ value: day, label: dayLabel(day) }))}
+        className="m3-pick--bare text-lg font-extrabold"
+      />
+      <TimeInput
         value={value.time}
-        onChange={(event) => onChange({ ...value, time: event.target.value })}
+        onChange={(time) => onChange({ ...value, time })}
         aria-label={`${label}: время`}
-        className="m3-time self-start"
+        className="self-start"
       />
     </div>
   );

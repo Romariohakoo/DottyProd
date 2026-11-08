@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import type { Event } from "@entities/event";
 import type { ActivityCategory, TripDto } from "@shared/api";
-import { Button, FormError, Icon } from "@shared/ui";
+import { Button, FormError, Icon, SelectMenu, TimeInput } from "@shared/ui";
 
 export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   excursion: "Экскурсия",
@@ -99,26 +99,16 @@ export function DaySelect({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="relative inline-flex items-center gap-1.5 self-start rounded-full bg-surface-container py-2 pr-8 pl-3 text-sm font-bold hover:bg-surface-container-high">
-      <Icon name="calendar" size={15} className="text-primary" />
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label="День"
-        className="cursor-pointer appearance-none bg-transparent font-extrabold outline-none"
-      >
-        {tripDays(trip).map((day) => (
-          <option key={day} value={day}>
-            {dayLabel(day)}
-          </option>
-        ))}
-      </select>
-      <Icon
-        name="next"
-        size={14}
-        className="pointer-events-none absolute right-3 rotate-90"
-      />
-    </label>
+    <SelectMenu
+      value={value}
+      onChange={onChange}
+      aria-label="День"
+      options={tripDays(trip).map((day) => ({
+        value: day,
+        label: dayLabel(day),
+      }))}
+      className="m3-pick--chip"
+    />
   );
 }
 
@@ -151,12 +141,10 @@ export function TimeChip({
       </button>
       {open ? (
         <div className="flex flex-wrap items-center gap-2 rounded-large bg-surface-container-low p-2">
-          <input
-            type="time"
+          <TimeInput
             value={start}
             aria-label="Начало"
-            onChange={(event) => onChange(event.target.value, minutes)}
-            className="m3-time h-9"
+            onChange={(value) => onChange(value, minutes)}
           />
           {DURATIONS.map((item) => (
             <button
@@ -249,20 +237,18 @@ export function WhenRow({
       <DaySelect trip={trip} value={day} onChange={onDay} />
       <div className="flex items-center gap-1 rounded-full bg-surface-container py-1 pr-1 pl-3">
         <Icon name="clock" size={15} className="text-primary" />
-        <input
-          type="time"
+        <TimeInput
           value={start}
           aria-label="Начало"
-          onChange={(event) => onStart(event.target.value)}
-          className="m3-time m3-time-chip"
+          onChange={onStart}
+          className="m3-pick--bare"
         />
         <span className="text-on-surface-variant">–</span>
-        <input
-          type="time"
+        <TimeInput
           value={end}
           aria-label="Конец"
-          onChange={(event) => onEnd(event.target.value)}
-          className="m3-time m3-time-chip"
+          onChange={onEnd}
+          className="m3-pick--bare"
         />
       </div>
     </div>

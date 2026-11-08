@@ -10,3 +10,4 @@ export * from "./date-time-text";
 export * from "./date-picker";
 export * from "./icon";
 export * from "./range-calendar";
+export * from "./pickers";

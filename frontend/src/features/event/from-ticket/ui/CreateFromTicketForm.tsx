@@ -20,7 +20,14 @@ import api, {
   tripQueryKeys,
 } from "@shared/api";
 import { TRANSIT_HUBS } from "@shared/config";
-import { Button, FormError, Icon, type IconName } from "@shared/ui";
+import {
+  Button,
+  DateInput,
+  FormError,
+  Icon,
+  type IconName,
+  TimeInput,
+} from "@shared/ui";
 
 import {
   AIRPORTS,
@@ -531,21 +538,36 @@ export function CreateFromTicketForm({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {field("Дата", "date", {
-                  type: "date",
-                  min: trip.startDate,
-                  max: trip.endDate,
-                })}
-                {field(
-                  kind === "plane" ? "Вылет" : "Отправление",
-                  "departure",
-                  {
-                    type: "time",
-                  },
-                )}
-                {field(kind === "plane" ? "Прилёт" : "Прибытие", "arrival", {
-                  type: "time",
-                })}
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="m3-ticket-key">Дата</span>
+                  <DateInput
+                    value={values.date}
+                    min={trip.startDate}
+                    max={trip.endDate}
+                    onChange={set("date")}
+                    className={`m3-pick--ticket ${mark("date")}`}
+                  />
+                </label>
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="m3-ticket-key">
+                    {kind === "plane" ? "Вылет" : "Отправление"}
+                  </span>
+                  <TimeInput
+                    value={values.departure}
+                    onChange={set("departure")}
+                    className={`m3-pick--ticket ${mark("departure")}`}
+                  />
+                </label>
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="m3-ticket-key">
+                    {kind === "plane" ? "Прилёт" : "Прибытие"}
+                  </span>
+                  <TimeInput
+                    value={values.arrival}
+                    onChange={set("arrival")}
+                    className={`m3-pick--ticket ${mark("arrival")}`}
+                  />
+                </label>
                 {field(
                   kind === "plane"
                     ? "Класс, бронь"
