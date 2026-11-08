@@ -55,10 +55,13 @@ def test_bot_link_and_due_delivery(client, db_session, monkeypatch):
     from src.services import telegram_notifications
 
     monkeypatch.setattr(settings, "telegram_bot_token", "test-token")
+    monkeypatch.setattr(settings, "telegram_bot_username", "@example_bot")
     _, headers = _register(client, "anna", "anna@example.com")
     link = client.post(f"{URL}/telegram-link", headers=headers)
     assert link.status_code == 200
     code = link.json()["command"].split()[1]
+    assert link.json()["bot_url"] == f"https://t.me/example_bot?start={code}"
+    assert client.post(f"{URL}/telegram-link", headers=headers).json() == link.json()
     bot = FakeTelegramClient()
     update = {"message": {"chat": {"id": 12345, "type": "private"}, "from": {"id": 12345}, "text": f"/start {code}"}}
     monkeypatch.setattr(telegram_notifications, "SessionLocal", client.app.state.test_session_factory)
@@ -116,7 +119,7 @@ def test_event_reminders_and_chat_confirmation(client, db_session, monkeypatch):
 
     event_id = db_session(setup)
     monkeypatch.setattr(telegram_notifications, "SessionLocal", client.app.state.test_session_factory)
-    assert client.get(f"{URL}/telegram-status", headers=owner).json() == {"linked": False}
+    assert client.get(f"{URL}/telegram-status", headers=owner).json() == {"linked": False, "bot_enabled": False}
     asyncio.run(telegram_notifications.schedule_event_reminders())
     asyncio.run(telegram_notifications.schedule_event_reminders())
     owner_rows = client.get(URL, headers=owner).json()
@@ -128,7 +131,7 @@ def test_event_reminders_and_chat_confirmation(client, db_session, monkeypatch):
     assert asyncio.run(send_due_notifications(bot)) == 0
     update = {"message": {"chat": {"id": 12345, "type": "private"}, "from": {"id": 12345}, "text": "/start"}}
     asyncio.run(process_bot_update(bot, update))
-    assert client.get(f"{URL}/telegram-status", headers=owner).json() == {"linked": True}
+    assert client.get(f"{URL}/telegram-status", headers=owner).json() == {"linked": True, "bot_enabled": False}
     assert asyncio.run(send_due_notifications(bot)) == 1
     assert bot.calls[-1][1] == {"chat_id": 12345, "text": "Скоро событие: Museum"}
 
@@ -150,3 +153,41 @@ def test_event_reminders_and_chat_confirmation(client, db_session, monkeypatch):
     asyncio.run(telegram_notifications.schedule_event_reminders())
     assert asyncio.run(send_due_notifications(bot)) == 1
     assert bot.calls[-1][1] == {"chat_id": 12345, "text": "Событие начинается: Gallery"}
+
+
+def test_telegram_oauth_account_change_clears_old_chat(client, db_session):
+    from src.models.user_model import UserModel
+    from src.repositories.user_repository import UserRepository
+
+    user_id, headers = _register(client, "switch", "switch@example.com")
+
+    async def change_telegram(session):
+        user = await session.get(UserModel, user_id)
+        user.telegram_id = 111
+        user.telegram_chat_id = 111
+        await session.commit()
+        await UserRepository(session).link_telegram(user, 222)
+        assert user.telegram_chat_id is None
+    db_session(change_telegram)
+    assert client.get(f"{URL}/telegram-status", headers=headers).json()["linked"] is False
+
+
+def test_link_discovers_bot_username_and_reports_configuration(client, monkeypatch):
+    from src.core.config import settings
+    from src.routers import notifications
+
+    _, headers = _register(client, "discovery", "discovery@example.com")
+    monkeypatch.setattr(settings, "telegram_bot_token", "test-token")
+    monkeypatch.setattr(settings, "telegram_notifications_enabled", True)
+    monkeypatch.setattr(settings, "telegram_bot_username", "")
+
+    async def get_me(client, method, payload):
+        assert method == "getMe"
+        return {"username": "discovered_bot"}
+
+    monkeypatch.setattr(notifications, "telegram_call", get_me)
+    response = client.post(f"{URL}/telegram-link", headers=headers)
+    assert response.status_code == 200
+    code = response.json()["command"].split()[1]
+    assert response.json()["bot_url"] == f"https://t.me/discovered_bot?start={code}"
+    assert client.get(f"{URL}/telegram-status", headers=headers).json() == {"linked": False, "bot_enabled": True}

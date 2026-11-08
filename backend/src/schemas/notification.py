@@ -38,7 +38,9 @@ class NotificationDTO(BaseModel):
 class TelegramLinkDTO(BaseModel):
     command: str
     expires_at: datetime
+    bot_url: str | None = None
 
 
 class TelegramStatusDTO(BaseModel):
     linked: bool
+    bot_enabled: bool

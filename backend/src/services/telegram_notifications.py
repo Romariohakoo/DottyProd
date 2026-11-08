@@ -143,6 +143,8 @@ async def process_bot_update(client: httpx.AsyncClient, update: dict) -> None:
             user = await session.scalar(select(UserModel).where(UserModel.telegram_id == sender["id"]))
             if user is not None:
                 user.telegram_chat_id = chat["id"]
+                user.telegram_link_code = None
+                user.telegram_link_expires_at = None
                 await session.commit()
                 answer = "Бот готов отправлять ваши напоминания."
     await telegram_call(client, "sendMessage", {"chat_id": chat["id"], "text": answer})

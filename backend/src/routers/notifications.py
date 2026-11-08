@@ -1,14 +1,18 @@
 from datetime import datetime, timedelta, timezone
 from secrets import token_urlsafe
 
+import httpx
 from fastapi import APIRouter
 from sqlalchemy import select
 
+from src.core.config import settings
 from src.core.dependencies import CurrentUser
 from src.core.domain import ConflictError, NotFoundError
 from src.db.dependencies import SessionDep
 from src.models.notification_model import NotificationModel
+from src.models.user_model import UserModel
 from src.schemas.notification import NotificationDTO, NotificationInput, TelegramLinkDTO, TelegramStatusDTO
+from src.services.telegram_notifications import telegram_call
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -43,7 +47,10 @@ async def create_notification(data: NotificationInput, session: SessionDep, user
 
 @router.get("/telegram-status", response_model=TelegramStatusDTO)
 async def telegram_status(user: CurrentUser):
-    return TelegramStatusDTO(linked=user.telegram_chat_id is not None)
+    return TelegramStatusDTO(
+        linked=user.telegram_chat_id is not None,
+        bot_enabled=bool(settings.telegram_notifications_enabled and settings.telegram_bot_token),
+    )
 
 
 @router.get("/{notification_id}", response_model=NotificationDTO)
@@ -79,7 +86,23 @@ async def delete_notification(notification_id: int, session: SessionDep, user: C
 
 @router.post("/telegram-link", response_model=TelegramLinkDTO)
 async def create_telegram_link(session: SessionDep, user: CurrentUser):
-    user.telegram_link_code = token_urlsafe(24)
-    user.telegram_link_expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+    # Concurrent frontend requests must not invalidate the command already shown.
+    user = await session.scalar(select(UserModel).where(UserModel.id == user.id).with_for_update())
+    now = datetime.now(timezone.utc)
+    if not user.telegram_link_code or not user.telegram_link_expires_at or user.telegram_link_expires_at <= now:
+        user.telegram_link_code = token_urlsafe(24)
+        user.telegram_link_expires_at = now + timedelta(minutes=15)
+    code = user.telegram_link_code
+    expires_at = user.telegram_link_expires_at
     await session.commit()
-    return TelegramLinkDTO(command=f"/start {user.telegram_link_code}", expires_at=user.telegram_link_expires_at)
+    username = settings.telegram_bot_username.strip().removeprefix("@")
+    if not username and settings.telegram_notifications_enabled and settings.telegram_bot_token:
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                bot = await telegram_call(client, "getMe", {})
+                username = bot.get("username", "")
+        except Exception:
+            # The command still works if the bot API is temporarily unavailable.
+            pass
+    bot_url = f"https://t.me/{username}?start={code}" if username else None
+    return TelegramLinkDTO(command=f"/start {code}", expires_at=expires_at, bot_url=bot_url)

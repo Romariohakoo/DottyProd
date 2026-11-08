@@ -64,6 +64,8 @@ class UserRepository:
         name: str | None = None,
         avatar_url: str | None = None,
     ) -> UserModel:
+        if user.telegram_id != telegram_id:
+            user.telegram_chat_id = None
         user.telegram_id = telegram_id
         if name and not user.name:
             user.name = name
