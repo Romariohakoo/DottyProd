@@ -33,6 +33,8 @@ import { EventInspector } from "@widgets/event-inspector";
 import { TripItinerary } from "@widgets/trip-itinerary";
 import { TripMap } from "@widgets/trip-map";
 
+import { PanelResizer } from "./PanelResizer";
+
 interface TripPageProps {
   tripId: number;
 }
@@ -54,6 +56,24 @@ const POPUP_TITLES: Record<string, string> = {
   place: "Место",
   event: "Событие",
   trip: "Поездка",
+};
+
+const readPlanWidth = () => {
+  try {
+    return Number(localStorage.getItem("plan-width")) || null;
+  } catch {
+    return null;
+  }
+};
+
+const storePlanWidth = (width: number | null) => {
+  try {
+    if (width === null) localStorage.removeItem("plan-width");
+    else localStorage.setItem("plan-width", String(width));
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export function TripPage({ tripId }: TripPageProps) {
@@ -83,6 +103,18 @@ export function TripPage({ tripId }: TripPageProps) {
       : 0;
   const [scrollWidth, setScrollWidth] = useState(0);
   const [mapOpen, setMapOpen] = useState(false);
+  const planRef = useRef<HTMLDivElement>(null);
+  const [planWidth, setPlanWidth] = useState<number | null>(null);
+
+  const resizePlan = (width: number | null) => {
+    setPlanWidth(width);
+    storePlanWidth(width);
+  };
+
+  useEffect(() => {
+    const saved = readPlanWidth();
+    if (saved) planRef.current?.style.setProperty("--plan-width", `${saved}px`);
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [picking, setPicking] = useState(false);
   const [showOrganizations, setShowOrganizations] = useState(false);
@@ -496,18 +528,23 @@ export function TripPage({ tripId }: TripPageProps) {
               ))}
             </nav>
             <div className="ml-auto flex shrink-0 gap-2">
-              <button
-                type="button"
+              <Button
+                variant="outlined"
                 aria-label={
                   detail.data.role === "owner"
                     ? "Изменить поездку"
                     : "О поездке"
                 }
+                title={
+                  detail.data.role === "owner"
+                    ? "Изменить поездку"
+                    : "О поездке"
+                }
                 onClick={() => openPopup("trip", tripId)}
-                className="m3-icon-button bg-surface-bright shadow-1 hover:bg-surface-container-low"
+                className="m3-button--square"
               >
                 <Icon name="edit" size={18} />
-              </button>
+              </Button>
               {canEdit ? (
                 <>
                   <Button
@@ -528,8 +565,20 @@ export function TripPage({ tripId }: TripPageProps) {
           </header>
 
           {activeTab === "base" ? (
-            <div className="m3-plan" data-map={mapOpen ? "open" : "closed"}>
+            <div
+              ref={planRef}
+              className="m3-plan"
+              data-map={mapOpen ? "open" : "closed"}
+              style={
+                planWidth
+                  ? ({
+                      "--plan-width": `${planWidth}px`,
+                    } as React.CSSProperties)
+                  : undefined
+              }
+            >
               <div className="m3-plan-mapcol">
+                <PanelResizer width={planWidth} onChange={resizePlan} />
                 <div className="m3-plan-mapframe">
                   <TripMap
                     places={detail.data.places}
@@ -815,50 +864,78 @@ export function TripPage({ tripId }: TripPageProps) {
                 />
               </aside>
             </div>
+          ) : activeTab === "places" ? (
+            <div className="m3-places-view">
+              <section
+                className="m3-places-list"
+                aria-labelledby="places-heading"
+              >
+                <div className="m3-section-heading">
+                  <h2 id="places-heading" className="m3-title">
+                    Места{" "}
+                    <span className="m3-meta">{detail.data.places.length}</span>
+                  </h2>
+                  {canEdit ? (
+                    <Button onClick={() => openPopup("create-place")}>
+                      <Icon name="plus" size={18} />
+                      Место
+                    </Button>
+                  ) : null}
+                </div>
+                {!detail.data.places.length ? (
+                  <button
+                    type="button"
+                    onClick={() => openPopup("create-place")}
+                    className="m3-dash-empty"
+                  >
+                    <span className="m3-tone-tile size-14" data-tone="lavender">
+                      <Icon name="pin" size={26} />
+                    </span>
+                    <b>Первое место</b>
+                  </button>
+                ) : (
+                  <PlaceList
+                    places={detail.data.places}
+                    numbers={placeNumbers}
+                    onSelect={(id) => openPopup("place", id)}
+                  />
+                )}
+              </section>
+              <div className="m3-places-map">
+                <div className="m3-plan-mapframe">
+                  <TripMap
+                    places={detail.data.places}
+                    events={timeline}
+                    numbers={placeNumbers}
+                    selectedPlaceId={focusedPlaceId}
+                    {...mapProps}
+                    className="h-full"
+                  />
+                  {mapControls}
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="m3-page">
-              {activeTab === "places" ? (
-                <>
-                  <div className="m3-section-heading">
-                    <h2 className="m3-title">Места</h2>
-                    {canEdit ? (
-                      <Button onClick={() => openPopup("create-place")}>
-                        <Icon name="plus" size={18} />
-                        Новое место
-                      </Button>
-                    ) : null}
-                  </div>
-                  {!detail.data.places.length ? (
-                    <StatusMessage>Мест пока нет.</StatusMessage>
-                  ) : (
-                    <PlaceList
-                      places={detail.data.places}
-                      numbers={placeNumbers}
-                      onSelect={(id) => openPopup("place", id)}
-                    />
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="m3-section-heading">
-                    <h2 className="m3-title">События</h2>
-                    {canEdit ? (
-                      <Button onClick={() => openPopup("create-event")}>
-                        <Icon name="plus" size={18} />
-                        Новое событие
-                      </Button>
-                    ) : null}
-                  </div>
-                  {!timeline.length ? (
-                    <StatusMessage>Событий пока нет.</StatusMessage>
-                  ) : (
-                    <EventList
-                      events={timeline}
-                      onSelect={(id) => openPopup("event", id)}
-                    />
-                  )}
-                </>
-              )}
+              <>
+                <div className="m3-section-heading">
+                  <h2 className="m3-title">События</h2>
+                  {canEdit ? (
+                    <Button onClick={() => openPopup("create-event")}>
+                      <Icon name="plus" size={18} />
+                      Новое событие
+                    </Button>
+                  ) : null}
+                </div>
+                {!timeline.length ? (
+                  <StatusMessage>Событий пока нет.</StatusMessage>
+                ) : (
+                  <EventList
+                    events={timeline}
+                    onSelect={(id) => openPopup("event", id)}
+                  />
+                )}
+              </>
             </div>
           )}
         </>

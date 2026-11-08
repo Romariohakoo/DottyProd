@@ -9,6 +9,7 @@ import { LogoutButton } from "@features/user/logout";
 import { YANDEX_MAPS_API_KEY } from "@shared/config";
 
 import "./globals.css";
+import "./screens.css";
 
 const manrope = Manrope({
   subsets: ["latin", "cyrillic"],

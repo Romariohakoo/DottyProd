@@ -1,16 +1,15 @@
 "use client";
 
+import { useState } from "react";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm, useWatch } from "react-hook-form";
 
+import { LocalityInput } from "@entities/place";
+import { uploadMedia } from "@shared/api";
 import { TRIP_COVERS } from "@shared/config";
-import {
-  DatePicker,
-  FormError,
-  FormField,
-  Icon,
-  SubmitButton,
-} from "@shared/ui";
+import { mediaUrl } from "@shared/lib";
+import { FormError, Icon, RangeCalendar, SubmitButton } from "@shared/ui";
 
 import { useCreateTripMutation } from "../model/use-create-trip-mutation";
 import { type CreateTripValues, createTripSchema } from "../model/validation";
@@ -29,11 +28,43 @@ const INITIAL_VALUES: CreateTripValues = {
   coverUrl: TRIP_COVERS[0].src,
 };
 
+const MONTHS = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
+
+const short = (value: string) => {
+  const [, month, day] = value.split("-").map(Number);
+  return `${day} ${MONTHS[month - 1]}`;
+};
+
+const plural = (count: number, one: string, few: string, many: string) =>
+  count % 10 === 1 && count % 100 !== 11
+    ? one
+    : [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)
+      ? few
+      : many;
+
 export function CreateTripForm({
   defaultValues,
   onSuccess,
 }: CreateTripFormProps) {
   const { mutate, isPending, error } = useCreateTripMutation();
+  const [destination, setDestination] = useState("");
+  const [titleEdited, setTitleEdited] = useState(Boolean(defaultValues?.title));
+  const [uploading, setUploading] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
+  const [customCover, setCustomCover] = useState<string | null>(null);
   const {
     register,
     handleSubmit,
@@ -45,7 +76,15 @@ export function CreateTripForm({
     mode: "onTouched",
     resolver: zodResolver(createTripSchema),
   });
-  const coverUrl = useWatch({ control, name: "coverUrl" });
+  const [coverUrl, startDate, endDate] = useWatch({
+    control,
+    name: ["coverUrl", "startDate", "endDate"],
+  });
+  const days =
+    startDate && endDate
+      ? Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86_400_000) +
+        1
+      : 0;
 
   const onSubmit = (values: CreateTripValues) => {
     mutate(
@@ -53,108 +92,182 @@ export function CreateTripForm({
         ...values,
         title: values.title.trim(),
         country: values.country.trim(),
-        description: values.description || null,
+        description: values.description.trim() || null,
         coverUrl: values.coverUrl.trim() || null,
       },
       { onSuccess },
     );
   };
 
+  const onCoverFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadFailed(false);
+    try {
+      const url = await uploadMedia(file);
+      setCustomCover(url);
+      setValue("coverUrl", url);
+    } catch {
+      setUploadFailed(true);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const covers = [
+    ...(customCover ? [{ src: customCover, label: "Своя обложка" }] : []),
+    ...TRIP_COVERS,
+  ];
+
   return (
     <form
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="m3-form"
+      className="flex flex-col gap-5"
       noValidate
     >
-      {coverUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={coverUrl}
-          alt=""
-          className="h-36 w-full rounded-large object-cover"
+      <div className="m3-newtrip-where">
+        <LocalityInput
+          kind="locality"
+          label="Куда"
+          icon="pin"
+          placeholder="Город или регион"
+          autoFocus
+          value={destination}
+          onChange={(value) => {
+            setDestination(value);
+            if (!titleEdited)
+              setValue(
+                "title",
+                value.trim()
+                  ? `Поездка: ${value.trim()[0].toLocaleUpperCase("ru-RU")}${value.trim().slice(1)}`
+                  : "",
+              );
+          }}
+          onPick={(locality) => {
+            if (locality.country)
+              setValue("country", locality.country, { shouldValidate: true });
+            if (!titleEdited)
+              setValue("title", `Поездка: ${locality.name}`, {
+                shouldValidate: true,
+              });
+          }}
         />
-      ) : null}
-      <FormField
-        label="Название"
-        type="text"
-        maxLength={200}
-        placeholder="Например, четыре дня в Казани"
-        error={errors.title?.message}
-        {...register("title")}
-      />
-      <FormField
-        label="Страна"
-        type="text"
-        maxLength={200}
-        placeholder="Россия"
-        error={errors.country?.message}
-        {...register("country")}
-      />
-      <Controller
-        name="startDate"
-        control={control}
-        render={({ field, fieldState }) => (
-          <Controller
-            name="endDate"
-            control={control}
-            render={({ field: endField, fieldState: endState }) => (
-              <DatePicker
-                {...field}
-                label="Даты"
-                endValue={endField.value}
-                onEndChange={endField.onChange}
-                requireEnd
-                disabled={isPending}
-                error={fieldState.error?.message || endState.error?.message}
-              />
+        <Controller
+          name="country"
+          control={control}
+          render={({ field, fieldState }) => (
+            <LocalityInput
+              kind="country"
+              label="Страна"
+              icon="globe"
+              placeholder="Россия"
+              value={field.value}
+              invalid={Boolean(fieldState.error)}
+              onChange={field.onChange}
+            />
+          )}
+        />
+      </div>
+
+      <section className="m3-newtrip-dates" aria-label="Даты">
+        <header>
+          <Icon name="calendar" size={18} />
+          <b>
+            {startDate
+              ? `${short(startDate)}${endDate ? ` – ${short(endDate)}` : ""}`
+              : "Выберите даты"}
+          </b>
+          {days ? (
+            <span className="m3-chip" data-tone="lavender">
+              {days} {plural(days, "день", "дня", "дней")}
+            </span>
+          ) : null}
+        </header>
+        <RangeCalendar
+          start={startDate}
+          end={endDate}
+          onChange={(start, end) => {
+            setValue("startDate", start, { shouldValidate: Boolean(end) });
+            setValue("endDate", end, { shouldValidate: Boolean(end) });
+          }}
+        />
+      </section>
+
+      <label className="m3-newtrip-title">
+        <span className="m3-locality-label">Название</span>
+        <input
+          type="text"
+          maxLength={200}
+          placeholder="Поездка: Казань"
+          {...register("title", { onChange: () => setTitleEdited(true) })}
+        />
+      </label>
+
+      <fieldset className="flex flex-col gap-2">
+        <legend className="m3-locality-label mb-2">Обложка</legend>
+        <div className="m3-cover-row">
+          <label
+            className="m3-cover-upload"
+            aria-busy={uploading}
+            title="Загрузить свою"
+          >
+            <input
+              type="file"
+              accept="image/jpeg,image/png"
+              className="sr-only"
+              onChange={(event) => {
+                void onCoverFile(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+            {uploading ? (
+              <span className="m3-loading scale-75" />
+            ) : (
+              <Icon name="upload" size={20} />
             )}
-          />
-        )}
-      />
-      <FormField
-        label="Описание — необязательно"
-        type="text"
-        placeholder="Что хотите увидеть, с кем едете"
-        error={errors.description?.message}
-        {...register("description")}
-      />
-      <fieldset className="m3-field">
-        <legend className="m3-label mb-2">Обложка</legend>
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
-          {TRIP_COVERS.map((cover) => (
+          </label>
+          {covers.map((cover) => (
             <button
               key={cover.src}
               type="button"
               aria-label={cover.label}
               aria-pressed={coverUrl === cover.src}
               onClick={() => setValue("coverUrl", cover.src)}
-              className={`relative aspect-[4/3] overflow-hidden rounded-small ${
-                coverUrl === cover.src
-                  ? "ring-2 ring-primary ring-offset-2"
-                  : "opacity-80 hover:opacity-100"
-              }`}
+              className="m3-cover-option"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={cover.src} alt="" className="size-full object-cover" />
+              <img src={mediaUrl(cover.src) ?? cover.src} alt="" />
               {coverUrl === cover.src ? (
-                <span className="absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-primary text-on-primary">
+                <span className="m3-cover-check">
                   <Icon name="check" size={12} />
                 </span>
               ) : null}
             </button>
           ))}
         </div>
+        {uploadFailed ? (
+          <FormError>
+            Не удалось загрузить картинку. Нужен JPEG или PNG до 10 МБ.
+          </FormError>
+        ) : null}
       </fieldset>
 
-      {error ? (
+      {errors.country || errors.title || errors.startDate || errors.endDate ? (
         <FormError>
-          Не удалось создать поездку. Проверьте данные и попробуйте ещё раз.
+          {errors.title?.message ??
+            errors.country?.message ??
+            (errors.startDate || errors.endDate
+              ? "Выберите даты начала и конца"
+              : "")}
         </FormError>
       ) : null}
+      {error ? (
+        <FormError>Не удалось создать поездку. Попробуйте ещё раз.</FormError>
+      ) : null}
 
-      <SubmitButton pending={isPending} pendingLabel="Создаём поездку…">
+      <SubmitButton pending={isPending} pendingLabel="Создаём…">
         Создать поездку
       </SubmitButton>
     </form>

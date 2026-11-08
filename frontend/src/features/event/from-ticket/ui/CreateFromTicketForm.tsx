@@ -298,29 +298,23 @@ export function CreateFromTicketForm({
 
   return (
     <div className="flex flex-col gap-5">
-      <ol className="grid grid-cols-3 gap-1.5" aria-label="Этапы">
-        {STEPS.map((label, index) => (
-          <li
-            key={label}
-            className="flex flex-col gap-1.5"
-            aria-current={index === step ? "step" : undefined}
-          >
-            <span className="h-1 overflow-hidden rounded-full bg-surface-container-high">
-              <span
-                className="block h-full rounded-full bg-primary transition-[width] duration-500"
-                style={{
-                  width: index < step ? "100%" : index === step ? "45%" : "0%",
-                }}
-              />
-            </span>
-            <span
-              className={`text-xs font-bold ${index === step ? "text-on-surface" : index < step ? "text-primary" : "text-on-surface-variant"}`}
+      <div className="m3-steps">
+        <span className="m3-steps-track" aria-hidden="true">
+          <span style={{ width: `${[16, 50, 100][step]}%` }} />
+        </span>
+        <ol aria-label="Этапы">
+          {STEPS.map((label, index) => (
+            <li
+              key={label}
+              aria-current={index === step ? "step" : undefined}
+              data-done={index < step || undefined}
             >
+              {index < step ? <Icon name="check" size={13} /> : null}
               {label}
-            </span>
-          </li>
-        ))}
-      </ol>
+            </li>
+          ))}
+        </ol>
+      </div>
 
       {step === 0 ? (
         <div className="flex flex-col gap-3">
@@ -370,10 +364,10 @@ export function CreateFromTicketForm({
               setResult(null);
               setStep(2);
             }}
-            className="flex items-center gap-1.5 self-center rounded-full px-3 py-1.5 text-sm font-bold text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
+            className="m3-scan-again justify-center"
           >
-            <Icon name="edit" size={15} />
-            Без фото
+            <Icon name="edit" size={16} />
+            Заполнить вручную
           </button>
         </div>
       ) : null}
@@ -408,50 +402,39 @@ export function CreateFromTicketForm({
           }}
           noValidate
         >
-          {photo ? (
-            <div className="flex items-center gap-2">
-              <span
-                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-bold ${
-                  result?.status === "found"
-                    ? "bg-tertiary-container text-on-tertiary-container"
-                    : "bg-surface-container text-on-surface-variant"
-                }`}
-              >
-                <Icon
-                  name={result?.status === "found" ? "check" : "edit"}
-                  size={15}
-                />
-                {result?.status === "found" ? "Распознано" : "Вручную"}
-              </span>
-              <button
-                type="button"
-                onClick={() => setStep(0)}
-                aria-label="Другое фото"
-                className="m3-icon-button size-9"
-              >
-                <Icon name="camera" size={16} />
-              </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="m3-segmented" role="tablist" aria-label="Транспорт">
+              {(Object.keys(KINDS) as TicketKind[]).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={kind === key}
+                  onClick={() => setKind(key)}
+                  className="flex items-center gap-1.5"
+                >
+                  <Icon name={KINDS[key].icon} size={16} />
+                  {KINDS[key].label}
+                </button>
+              ))}
             </div>
-          ) : null}
-
-          <div
-            className="m3-segmented self-start"
-            role="tablist"
-            aria-label="Транспорт"
-          >
-            {(Object.keys(KINDS) as TicketKind[]).map((key) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={kind === key}
-                onClick={() => setKind(key)}
-                className="flex items-center gap-1.5"
-              >
-                <Icon name={KINDS[key].icon} size={16} />
-                {KINDS[key].label}
-              </button>
-            ))}
+            <button
+              type="button"
+              onClick={() => setStep(0)}
+              className="m3-scan-again"
+              data-found={result?.status === "found" || undefined}
+              title={
+                result?.status === "found"
+                  ? "Данные взяты из фото. Сканировать другое"
+                  : "Заполнить по фото билета"
+              }
+            >
+              <Icon
+                name={result?.status === "found" ? "check" : "camera"}
+                size={16}
+              />
+              {result?.status === "found" ? "Из фото" : "По фото"}
+            </button>
           </div>
 
           <div
@@ -535,26 +518,25 @@ export function CreateFromTicketForm({
               </div>
             </div>
             <div className="m3-ticket-stub" style={{ background: meta.tint }}>
-              {field("Место", "seat", {
-                placeholder: "—",
-                className: "text-2xl font-extrabold",
-              })}
-              {preview ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={preview}
-                  alt="Фото билета"
-                  className="aspect-square w-full rounded-medium object-cover"
-                />
-              ) : (
-                <span
-                  className="flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-medium border-[1.5px] border-dashed text-center text-xs font-bold"
-                  style={{ borderColor: meta.accent, color: meta.accent }}
-                >
-                  <Icon name="ticket" size={22} />
-                  Без фото
+              <label className="flex min-w-0 flex-col gap-1">
+                <span className="m3-ticket-key flex items-center gap-1.5">
+                  <span className="flex" style={{ color: meta.accent }}>
+                    <Icon name="seat" size={14} />
+                  </span>
+                  Место
                 </span>
-              )}
+                <input
+                  value={values.seat}
+                  onChange={(event) => set("seat")(event.target.value)}
+                  placeholder="—"
+                  className={`m3-ticket-input text-3xl font-extrabold uppercase ${mark("seat")}`}
+                />
+              </label>
+              <span
+                className="m3-ticket-barcode"
+                aria-hidden="true"
+                style={{ color: meta.accent }}
+              />
             </div>
           </div>
 

@@ -7,6 +7,7 @@ import { useForm, useWatch } from "react-hook-form";
 
 import type { Event } from "@entities/event";
 import type { Trip } from "@entities/trip";
+import { uploadMedia } from "@shared/api";
 import { TRIP_COVERS } from "@shared/config";
 import { getEventScheduleError, tripCoverUrl } from "@shared/lib";
 import { Button, FormError, Icon, RangeCalendar } from "@shared/ui";
@@ -33,6 +34,8 @@ export function UpdateTripForm({
 }: UpdateTripFormProps) {
   const { mutate, isPending, error } = useUpdateTripMutation(trip.id);
   const [panel, setPanel] = useState<"cover" | "dates" | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
   const {
     register,
     handleSubmit,
@@ -88,6 +91,21 @@ export function UpdateTripForm({
     );
   };
 
+  const onCoverFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadFailed(false);
+    try {
+      const url = await uploadMedia(file);
+      setValue("coverUrl", url, { shouldDirty: true });
+      setPanel(null);
+    } catch {
+      setUploadFailed(true);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <form
       onSubmit={(event) => {
@@ -112,14 +130,19 @@ export function UpdateTripForm({
           Сменить обложку
         </button>
         <div className="absolute right-5 bottom-4 left-5 flex flex-col gap-2 text-on-primary">
-          <textarea
-            {...register("title")}
-            rows={2}
-            maxLength={200}
-            aria-label="Название поездки"
-            placeholder="Название поездки"
-            className="m3-autosize -mx-2 w-[calc(100%+1rem)] resize-none rounded-medium bg-transparent px-2 text-3xl leading-tight font-extrabold tracking-tight outline-none placeholder:text-on-primary/60 hover:bg-white/10 focus:bg-white/15"
-          />
+          <label className="m3-editable-title">
+            <textarea
+              {...register("title")}
+              rows={2}
+              maxLength={200}
+              aria-label="Название поездки"
+              placeholder="Название поездки"
+              className="m3-autosize w-full resize-none bg-transparent text-3xl leading-tight font-extrabold tracking-tight outline-none placeholder:text-on-primary/60"
+            />
+            <span className="m3-editable-pen" aria-hidden="true">
+              <Icon name="edit" size={14} />
+            </span>
+          </label>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex items-center gap-1.5 rounded-full bg-scrim/35 py-1 pr-3 pl-2.5 text-sm font-bold backdrop-blur-sm">
               <Icon name="globe" size={14} />
@@ -131,6 +154,7 @@ export function UpdateTripForm({
                 size={Math.max(6, trip.country.length)}
                 className="bg-transparent outline-none placeholder:text-on-primary/60"
               />
+              <Icon name="edit" size={12} className="opacity-70" />
             </label>
             <button
               type="button"
@@ -143,6 +167,7 @@ export function UpdateTripForm({
                 ? `${shortDate(startDate)} – ${endDate ? shortDate(endDate) : "…"}`
                 : "Выберите даты"}
               {days > 0 ? ` · ${days} дн.` : ""}
+              <Icon name="next" size={12} className="rotate-90 opacity-70" />
             </button>
           </div>
         </div>
@@ -150,6 +175,26 @@ export function UpdateTripForm({
 
       {panel === "cover" ? (
         <div className="m3-popover grid grid-cols-4 gap-2 p-3 sm:grid-cols-8">
+          <label
+            className="m3-cover-upload size-full min-h-14"
+            aria-busy={uploading}
+            title="Загрузить свою"
+          >
+            <input
+              type="file"
+              accept="image/jpeg,image/png"
+              className="sr-only"
+              onChange={(event) => {
+                void onCoverFile(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+            {uploading ? (
+              <span className="m3-loading scale-75" />
+            ) : (
+              <Icon name="upload" size={20} />
+            )}
+          </label>
           {TRIP_COVERS.map((item) => (
             <button
               key={item.src}
@@ -212,12 +257,19 @@ export function UpdateTripForm({
         </FormError>
       ) : null}
 
-      <textarea
-        {...register("description")}
-        rows={3}
-        placeholder="Описание"
-        className="resize-none rounded-medium bg-transparent px-3 py-2 text-base leading-relaxed outline-none placeholder:text-on-surface-variant hover:bg-surface-container-low focus:bg-surface-container-low"
-      />
+      {uploadFailed ? (
+        <FormError>Нужна картинка JPEG или PNG до 10 МБ.</FormError>
+      ) : null}
+
+      <label className="m3-editable-note">
+        <Icon name="edit" size={16} />
+        <textarea
+          {...register("description")}
+          rows={2}
+          placeholder="Добавьте описание"
+          className="m3-autosize w-full resize-none bg-transparent leading-relaxed outline-none placeholder:text-on-surface-variant"
+        />
+      </label>
 
       {error ? (
         <FormError>Не удалось сохранить. Попробуйте ещё раз.</FormError>

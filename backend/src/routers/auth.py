@@ -8,7 +8,7 @@ from src.core.cookies import REFRESH_COOKIE, clear_auth_cookies, set_auth_cookie
 from src.core.dependencies import AccessToken, CurrentUser
 from src.core.security import InvalidToken, read_token
 from src.db.dependencies import SessionDep
-from src.schemas.auth import UserLogin, UserRegister, UserResponse, UserUpdateCredentials
+from src.schemas.auth import UserLogin, UserProfileUpdate, UserRegister, UserResponse, UserUpdateCredentials
 from src.services.auth_service import AuthService
 from src.services.telegram_oauth import build_telegram_auth_url, fetch_telegram_user
 
@@ -85,6 +85,16 @@ async def logout(
 
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser):
+    return user
+
+
+@router.patch("/me/profile", response_model=UserResponse)
+async def update_profile(data: UserProfileUpdate, user: CurrentUser, session: SessionDep):
+    for field in data.model_fields_set:
+        value = getattr(data, field)
+        setattr(user, field, value.strip() or None if isinstance(value, str) else None)
+    await session.commit()
+    await session.refresh(user)
     return user
 
 

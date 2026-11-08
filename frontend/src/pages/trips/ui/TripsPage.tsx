@@ -1,27 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
+  type TripCard,
   TripDetails,
-  TripList,
   useTripQuery,
   useTripsQuery,
 } from "@entities/trip";
+import { useGetMe } from "@entities/user";
 import { CreateTripForm } from "@features/trip/create";
 import { DeleteTripButton } from "@features/trip/delete";
 import { UpdateTripForm } from "@features/trip/update";
+import { tripCoverUrl } from "@shared/lib";
 import {
+  Button,
   Dialog,
   FormError,
   Icon,
-  RangeCalendar,
   StatusMessage,
   TextLink,
 } from "@shared/ui";
 
-const MONTHS_GENITIVE = [
+const DAY_MS = 86_400_000;
+
+const MONTHS = [
   "января",
   "февраля",
   "марта",
@@ -36,9 +40,77 @@ const MONTHS_GENITIVE = [
   "декабря",
 ];
 
-function formatShort(value: string) {
-  const [, month, day] = value.split("-").map(Number);
-  return `${day} ${MONTHS_GENITIVE[month - 1]}`;
+const day = (value: string) => Date.parse(`${value}T00:00:00`);
+
+const short = (value: string) => {
+  const [, month, date] = value.split("-").map(Number);
+  return `${date} ${MONTHS[month - 1]}`;
+};
+
+const plural = (count: number, one: string, few: string, many: string) =>
+  count % 10 === 1 && count % 100 !== 11
+    ? one
+    : [2, 3, 4].includes(count % 10) && ![12, 13, 14].includes(count % 100)
+      ? few
+      : many;
+
+const length = (trip: TripCard) =>
+  Math.round((day(trip.endDate) - day(trip.startDate)) / DAY_MS) + 1;
+
+const greeting = (hour: number) =>
+  hour < 5
+    ? "Доброй ночи"
+    : hour < 12
+      ? "Доброе утро"
+      : hour < 18
+        ? "Добрый день"
+        : "Добрый вечер";
+
+function status(trip: TripCard, today: number) {
+  if (day(trip.endDate) < today)
+    return { label: "Прошла", tone: "slate" as const };
+  if (day(trip.startDate) <= today)
+    return { label: "Сейчас", tone: "mint" as const };
+  const left = Math.round((day(trip.startDate) - today) / DAY_MS);
+  return {
+    label:
+      left === 1
+        ? "Завтра"
+        : `Через ${left} ${plural(left, "день", "дня", "дней")}`,
+    tone: "lavender" as const,
+  };
+}
+
+function DayStrip({ trip, today }: { trip: TripCard; today: number }) {
+  const total = length(trip);
+  const shown = Math.min(total, 7);
+  const first = day(trip.startDate);
+  return (
+    <div className="m3-daystrip" aria-label="Дни поездки">
+      {Array.from({ length: shown }, (_, index) => {
+        const date = new Date(first + index * DAY_MS);
+        const value = date.getTime();
+        const state =
+          value < today ? "past" : value === today ? "today" : "next";
+        return (
+          <span key={value} data-state={state}>
+            <small>
+              {value === today
+                ? "сегодня"
+                : date.toLocaleDateString("ru-RU", { weekday: "short" })}
+            </small>
+            <b>{date.getDate()}</b>
+          </span>
+        );
+      })}
+      {total > shown ? (
+        <span data-state="more">
+          <small>ещё</small>
+          <b>+{total - shown}</b>
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 export function TripsPage() {
@@ -50,28 +122,7 @@ export function TripsPage() {
   const selectedTripId = popupType === "trip" ? selectedId : NaN;
   const trips = useTripsQuery();
   const selected = useTripQuery(selectedTripId);
-  const [destination, setDestination] = useState("");
-  const [country, setCountry] = useState("");
-  const [range, setRange] = useState({ start: "", end: "" });
-  const [calendarOpen, setCalendarOpen] = useState(false);
-  const searchRef = useRef<HTMLFormElement>(null);
-
-  useEffect(() => {
-    if (!calendarOpen) return;
-    const onPointer = (event: PointerEvent) => {
-      if (!searchRef.current?.contains(event.target as Node))
-        setCalendarOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setCalendarOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [calendarOpen]);
+  const me = useGetMe();
 
   const closePopup = useCallback(() => {
     const params = new URLSearchParams(searchParams?.toString());
@@ -83,193 +134,176 @@ export function TripsPage() {
   }, [pathname, router, searchParams]);
 
   const openCreate = () => {
-    setCalendarOpen(false);
     const params = new URLSearchParams(searchParams?.toString());
     params.set("open-popup-type", "create-trip");
     params.delete("open-popup-id");
     router.push(`${pathname}?${params}`, { scroll: false });
   };
 
-  const today = new Date().toISOString().slice(0, 10);
-  const upcoming = trips.data?.filter((trip) => trip.endDate >= today) ?? [];
-  const past = trips.data?.filter((trip) => trip.endDate < today) ?? [];
-  const nights =
-    range.start && range.end
-      ? Math.round(
-          (Date.parse(range.end) - Date.parse(range.start)) / 86_400_000,
-        ) + 1
-      : 0;
+  const now = new Date();
+  const today = new Date(now).setHours(0, 0, 0, 0);
+  const sorted = [...(trips.data ?? [])].sort(
+    (left, right) => day(left.startDate) - day(right.startDate),
+  );
+  const upcoming = sorted.filter((trip) => day(trip.endDate) >= today);
+  const past = sorted.filter((trip) => day(trip.endDate) < today).reverse();
+  const focus = upcoming[0];
+  const name = me.data?.name || me.data?.username;
+
+  const headline = !focus ? (
+    <>
+      Куда отправимся <span className="m3-accent">дальше?</span>
+    </>
+  ) : day(focus.startDate) <= today ? (
+    <>
+      Вы в пути,{" "}
+      <span className="m3-accent-num">
+        день {Math.round((today - day(focus.startDate)) / DAY_MS) + 1} из{" "}
+        {length(focus)}
+      </span>
+    </>
+  ) : (
+    (() => {
+      const left = Math.round((day(focus.startDate) - today) / DAY_MS);
+      return (
+        <>
+          До поездки{" "}
+          <span className="m3-accent-num">
+            {left === 1
+              ? "1 день"
+              : `${left} ${plural(left, "день", "дня", "дней")}`}
+          </span>
+        </>
+      );
+    })()
+  );
+
+  const row = (trip: TripCard) => {
+    const badge = status(trip, today);
+    const total = length(trip);
+    return (
+      <li key={trip.id}>
+        <button
+          type="button"
+          onClick={() => router.push(`/trips/${trip.id}`)}
+          className="m3-trip-row"
+          data-past={badge.tone === "slate" || undefined}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={tripCoverUrl(trip.coverUrl, trip)} alt="" />
+          <span className="min-w-0 flex-1">
+            <b>{trip.title}</b>
+            <small>
+              <Icon name="calendar" size={13} />
+              {short(trip.startDate)} – {short(trip.endDate)}
+              <span aria-hidden="true">·</span>
+              {total} {plural(total, "день", "дня", "дней")}
+              <span aria-hidden="true">·</span>
+              {trip.country}
+            </small>
+          </span>
+          <span className="m3-chip" data-tone={badge.tone}>
+            {badge.label}
+          </span>
+          <Icon name="next" size={18} className="m3-trip-row-arrow" />
+        </button>
+      </li>
+    );
+  };
 
   return (
-    <main id="main-content">
-      <section className="m3-hero-band" aria-labelledby="search-heading">
-        <div className="m3-decor" aria-hidden="true">
-          <span className="m3-decor-label top-5 left-[9.5rem] hidden sm:block">
-            55.79° N · 49.12° E
-          </span>
-          <span className="m3-decor-label top-5 right-[9.5rem] hidden sm:block">
-            {"{ маршруты · даты · места }"}
-          </span>
-        </div>
-        <div className="mx-auto flex w-full max-w-7xl flex-col items-start gap-5 px-4 pt-8 pb-10 sm:px-6 sm:pt-14 lg:px-10">
-          <span className="m3-pill-badge">
-            <Icon name="sparkle" size={14} />
-            {upcoming.length
-              ? `Впереди ${upcoming.length} ${upcoming.length === 1 ? "поездка" : upcoming.length < 5 ? "поездки" : "поездок"}`
-              : "Новый маршрут"}
-          </span>
-          <h1 id="search-heading" className="m3-display max-w-3xl">
-            Куда отправимся <span className="m3-accent">дальше?</span>
-          </h1>
-          <p className="max-w-xl text-lg font-medium text-on-surface-variant">
-            Даты, места и билеты — в одном плане по дням.
+    <main id="main-content" className="m3-dash">
+      <header className="m3-dash-head">
+        <div className="min-w-0">
+          <p className="m3-greeting">
+            {name ? `${greeting(now.getHours())}, ${name}` : " "}
           </p>
-          <form
-            ref={searchRef}
-            className="relative mt-2 w-full"
-            onSubmit={(event) => {
-              event.preventDefault();
-              openCreate();
-            }}
-          >
-            <div className="m3-search-bar">
-              <label className="m3-search-field">
-                <span className="m3-search-label">Куда</span>
-                <input
-                  value={destination}
-                  onChange={(event) => setDestination(event.target.value)}
-                  placeholder="Город или регион"
-                  className="m3-search-input"
-                />
-              </label>
-              <button
-                type="button"
-                aria-expanded={calendarOpen}
-                onClick={() => setCalendarOpen((open) => !open)}
-                className={`m3-search-field ${calendarOpen ? "m3-search-field--active" : ""}`}
-              >
-                <span className="m3-search-label">Когда</span>
-                <span
-                  className={`m3-search-value ${range.start ? "text-on-surface" : ""}`}
-                >
-                  {range.start
-                    ? `${formatShort(range.start)}${range.end ? ` – ${formatShort(range.end)}` : ""}`
-                    : "Добавьте даты"}
-                </span>
-              </button>
-              <label className="m3-search-field">
-                <span className="m3-search-label">Страна</span>
-                <input
-                  value={country}
-                  onChange={(event) => setCountry(event.target.value)}
-                  placeholder="Россия"
-                  className="m3-search-input"
-                />
-              </label>
-              <button type="submit" className="m3-search-submit">
-                <Icon name="plus" size={18} />
-                Создать поездку
-              </button>
-            </div>
-            {calendarOpen ? (
-              <div
-                role="dialog"
-                aria-label="Выбор дат"
-                className="m3-popover absolute top-full left-0 z-20 mt-3 w-full max-w-3xl md:left-[20%]"
-              >
-                <RangeCalendar
-                  start={range.start}
-                  end={range.end}
-                  onChange={(start, end) => setRange({ start, end })}
-                />
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setRange({ start: "", end: "" })}
-                    className="m3-button m3-button--text min-h-10 px-3 py-1 text-sm"
-                  >
-                    Сбросить
-                  </button>
-                  <span className="text-sm font-bold text-primary">
-                    {nights ? `${nights} дн.` : ""}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={!range.end}
-                    onClick={() => setCalendarOpen(false)}
-                    className="m3-button min-h-10 py-1"
-                  >
-                    Готово
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </form>
+          <h1 className="m3-dash-title">{headline}</h1>
         </div>
-      </section>
+        <Button onClick={openCreate} className="shrink-0">
+          <Icon name="plus" size={18} />
+          Новая поездка
+        </Button>
+      </header>
 
-      <div className="m3-page">
-        {trips.isPending ? (
-          <div
-            role="status"
-            aria-label="Загружаем поездки"
-            className="m3-trip-grid"
-          >
-            {[0, 1, 2, 3].map((item) => (
-              <div
-                key={item}
-                className="flex flex-col gap-3 rounded-large bg-surface-bright p-2 pb-4 shadow-1"
-              >
-                <div className="m3-skeleton aspect-[4/3]" />
-                <div className="m3-skeleton mx-2 h-4 w-2/3" />
-                <div className="m3-skeleton mx-2 h-3 w-1/2" />
-              </div>
-            ))}
-          </div>
-        ) : trips.isError ? (
-          <FormError>
-            Не удалось загрузить поездки. Попробуйте обновить страницу.
-          </FormError>
-        ) : trips.data.length === 0 ? (
-          <section className="m3-empty">
-            <span data-tone="lavender" className="m3-tone-tile mb-2 size-14">
-              <Icon name="plane" size={26} />
-            </span>
-            <h2 className="m3-title">Поездок пока нет</h2>
-            <p className="m3-support">
-              Укажите, куда и когда едете, — остальное добавите потом.
-            </p>
-          </section>
-        ) : (
-          <>
-            {upcoming.length ? (
-              <section className="flex flex-col gap-5">
-                <h2 className="m3-title flex items-baseline gap-2">
-                  Предстоящие поездки
-                  <span className="m3-meta">{upcoming.length}</span>
-                </h2>
-                <TripList
-                  trips={upcoming}
-                  featured
-                  onSelect={(id) => router.push(`/trips/${id}`)}
-                />
-              </section>
-            ) : null}
-            {past.length ? (
-              <section className="flex flex-col gap-5">
-                <h2 className="m3-title flex items-baseline gap-2">
-                  Воспоминания
-                  <span className="m3-meta">{past.length}</span>
-                </h2>
-                <TripList
-                  trips={past}
-                  onSelect={(id) => router.push(`/trips/${id}`)}
-                />
-              </section>
-            ) : null}
-          </>
-        )}
-      </div>
+      {trips.isPending ? (
+        <div
+          role="status"
+          aria-label="Загружаем поездки"
+          className="flex flex-col gap-3"
+        >
+          <div className="m3-skeleton h-48 rounded-xlarge" />
+          <div className="m3-skeleton h-20 rounded-large" />
+          <div className="m3-skeleton h-20 rounded-large" />
+        </div>
+      ) : trips.isError ? (
+        <FormError>Не удалось загрузить поездки. Обновите страницу.</FormError>
+      ) : !sorted.length ? (
+        <button type="button" onClick={openCreate} className="m3-dash-empty">
+          <span className="m3-tone-tile size-14" data-tone="lavender">
+            <Icon name="plane" size={26} />
+          </span>
+          <b>Первая поездка</b>
+          <span className="m3-chip" data-tone="lavender">
+            <Icon name="plus" size={14} />
+            Создать
+          </span>
+        </button>
+      ) : (
+        <>
+          {focus ? (
+            <button
+              type="button"
+              onClick={() => router.push(`/trips/${focus.id}`)}
+              className="m3-next-trip"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={tripCoverUrl(focus.coverUrl, focus)} alt="" />
+              <span className="m3-next-trip-body">
+                <span className="m3-next-trip-top">
+                  <span className="min-w-0">
+                    <b>{focus.title}</b>
+                    <small>
+                      <Icon name="globe" size={13} />
+                      {focus.country}
+                      <span aria-hidden="true">·</span>
+                      {short(focus.startDate)} – {short(focus.endDate)}
+                    </small>
+                  </span>
+                  <span
+                    className="m3-chip"
+                    data-tone={status(focus, today).tone}
+                  >
+                    {status(focus, today).label}
+                  </span>
+                </span>
+                <DayStrip trip={focus} today={today} />
+              </span>
+            </button>
+          ) : null}
+
+          {upcoming.length > 1 ? (
+            <section
+              className="m3-dash-section"
+              aria-labelledby="upcoming-heading"
+            >
+              <h2 id="upcoming-heading">
+                Дальше <span>{upcoming.length - 1}</span>
+              </h2>
+              <ul className="m3-trip-rows">{upcoming.slice(1).map(row)}</ul>
+            </section>
+          ) : null}
+
+          {past.length ? (
+            <section className="m3-dash-section" aria-labelledby="past-heading">
+              <h2 id="past-heading">
+                Прошедшие <span>{past.length}</span>
+              </h2>
+              <ul className="m3-trip-rows">{past.map(row)}</ul>
+            </section>
+          ) : null}
+        </>
+      )}
 
       {popupType === "trip" || popupType === "create-trip" ? (
         <Dialog labelledBy="trip-popup-heading" onClose={closePopup}>
@@ -288,15 +322,7 @@ export function TripsPage() {
               </button>
             </div>
             {popupType === "create-trip" ? (
-              <CreateTripForm
-                defaultValues={{
-                  title: destination ? `Поездка: ${destination}` : "",
-                  country,
-                  startDate: range.start,
-                  endDate: range.end,
-                }}
-                onSuccess={closePopup}
-              />
+              <CreateTripForm onSuccess={closePopup} />
             ) : !Number.isInteger(selectedTripId) || selectedTripId <= 0 ? (
               <FormError>Некорректный ID поездки.</FormError>
             ) : selected.isPending ? (

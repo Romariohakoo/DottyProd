@@ -4,3 +4,4 @@ export * from "./place-map";
 export * from "./place-address-search";
 export * from "./place-picker";
 export * from "./place-stop-field";
+export * from "./locality-input";
