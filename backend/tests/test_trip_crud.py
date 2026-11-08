@@ -516,3 +516,75 @@ def test_repeated_client_request_id_returns_the_same_event(client):
     assert second.status_code == 201, second.json()
     assert first.json()["id"] == second.json()["id"]
     assert second.json()["title"] == first.json()["title"]
+
+
+@pytest.mark.parametrize("bounds", [
+    {"start_date": "2026-06-11", "end_date": "2026-06-13"},
+    {"start_date": "2026-06-10", "end_date": "2026-06-11"},
+])
+def test_shrinking_trip_cannot_orphan_events(client, bounds):
+    _, headers = _register(client, "anna", "anna@example.com")
+    trip_id = _create_trip(client, headers)["id"]
+    event = client.post(
+        f"{TRIPS_URL}/{trip_id}/events", headers=headers,
+        json=_activity_payload(start_at="2026-06-10T12:00:00Z", end_at="2026-06-12T12:00:00Z"),
+    )
+    assert event.status_code == 201, event.text
+    response = client.put(f"{TRIPS_URL}/{trip_id}", headers=headers, json=_trip_payload(**bounds))
+    assert response.status_code == 422, response.text
+    assert response.json()["reason"] == "Event dates must be within the trip dates"
+    detail = client.get(f"{TRIPS_URL}/{trip_id}", headers=headers).json()
+    assert detail["trip"]["start_date"] == "2026-06-10"
+    assert detail["trip"]["end_date"] == "2026-06-13"
+    assert len(detail["timeline"]) == 1
+
+
+def test_shrinking_trip_accepts_contained_events_and_empty_trip(client):
+    _, headers = _register(client, "anna", "anna@example.com")
+    trip_id = _create_trip(client, headers)["id"]
+    bounds = {"start_date": "2026-06-11", "end_date": "2026-06-12"}
+    event = client.post(
+        f"{TRIPS_URL}/{trip_id}/events", headers=headers,
+        json=_activity_payload(start_at="2026-06-11T00:00:00Z", end_at=None),
+    )
+    assert event.status_code == 201, event.text
+    response = client.put(f"{TRIPS_URL}/{trip_id}", headers=headers, json=_trip_payload(**bounds))
+    assert response.status_code == 200, response.text
+    empty_id = _create_trip(client, headers)["id"]
+    assert client.put(f"{TRIPS_URL}/{empty_id}", headers=headers, json=_trip_payload(**bounds)).status_code == 200
+
+
+def test_repeated_request_returns_same_trip_and_place(client):
+    _, headers = _register(client, "anna", "anna@example.com")
+    key = "22222222-2222-4222-8222-222222222222"
+    first = _create_trip(client, headers, client_request_id=key)
+    second = _create_trip(client, headers, client_request_id=key)
+    assert first["id"] == second["id"]
+    url = f"{TRIPS_URL}/{first['id']}/places"
+    place = _place_payload(client_request_id=key)
+    first_place = client.post(url, headers=headers, json=place)
+    second_place = client.post(url, headers=headers, json=place)
+    assert first_place.status_code == second_place.status_code == 201
+    assert first_place.json()["id"] == second_place.json()["id"]
+    detail = client.get(f"{TRIPS_URL}/{first['id']}", headers=headers).json()
+    assert len(detail["places"]) == 1
+    assert len(client.get(TRIPS_URL, headers=headers).json()) == 1
+
+
+def test_concurrent_repeated_trip_request_returns_same_trip(client):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    _, headers = _register(client, "anna", "anna@example.com")
+    barrier = Barrier(2)
+    payload = _trip_payload(client_request_id="33333333-3333-4333-8333-333333333333")
+
+    def create():
+        barrier.wait(timeout=10)
+        return client.post(TRIPS_URL, headers=headers, json=payload)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(executor.map(lambda _: create(), range(2)))
+    assert [r.status_code for r in responses] == [201, 201]
+    assert responses[0].json()["id"] == responses[1].json()["id"]
+    assert len(client.get(TRIPS_URL, headers=headers).json()) == 1

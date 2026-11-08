@@ -151,6 +151,7 @@ class TripService:
 
     async def create_trip(self, user: UserModel, data: TripInput) -> TripDTO:
         if data.client_request_id is not None:
+            await self.trips.lock_owner(user.id)
             existing = await self.trips.get_trip_by_request(user.id, data.client_request_id)
             if existing is not None:
                 return TripDTO.model_validate(existing)
@@ -165,6 +166,16 @@ class TripService:
     async def update_trip(self, access: TripAccess, data: TripInput) -> TripDTO:
         require_role(access, OWNER)
         await self.trips.lock_trip(access.trip.id)
+
+        await self.session.refresh(access.trip, attribute_names=["start_date", "end_date"])
+        # Expanding bounds cannot orphan an event. Check existing instants only
+        # when removing calendar days; all event writes take the same trip lock.
+        if data.start_date > access.trip.start_date or data.end_date < access.trip.end_date:
+            intervals = await self.trips.list_event_intervals([access.trip.id])
+            for _trip_id, _event_id, start_at, end_at in intervals:
+                moments = (start_at,) if end_at is None else (start_at, end_at)
+                if any(not data.start_date <= moment.date() <= data.end_date for moment in moments):
+                    raise InvalidDataError(EVENT_OUTSIDE_TRIP)
 
         _assign(access.trip, data)
         await self._commit()

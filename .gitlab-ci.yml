@@ -5,9 +5,12 @@ stages:
 
 variables:
   REGISTRY: registry.spirit.t-education.com/${CI_PROJECT_ROOT_NAMESPACE}
-  FRONTEND_IMAGE_NAME: ${REGISTRY}/${CI_PROJECT_NAME}_frontend:${CI_COMMIT_SHORT_SHA}
-  BACKEND_IMAGE_NAME: ${REGISTRY}/${CI_PROJECT_NAME}_backend:${CI_COMMIT_SHORT_SHA}
-  VM: ubuntu@158.160.134.165
+  FRONTEND_IMAGE_NAME: ${REGISTRY}/${CI_PROJECT_NAME}_frontend:${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}
+  BACKEND_IMAGE_NAME: ${REGISTRY}/${CI_PROJECT_NAME}_backend:${CI_COMMIT_SHORT_SHA}-${CI_PIPELINE_ID}
+  DEPLOY_VM: 158.160.134.165
+  DEPLOY_SSH_USER: ubuntu
+  VM: ${DEPLOY_SSH_USER}@${DEPLOY_VM}
+  DEPLOY_URL: https://hack-kzn-11-vm1-5798eb.vm.prodcontest.com
 
 # 1. ТЕСТЫ БЭКЕНДА
 test_backend:
@@ -28,7 +31,21 @@ test_backend:
     - pip install -q -r requirements.txt
     - PYTEST_USE_TESTCONTAINERS=0 POSTGRES_HOST=postgres POSTGRES_PORT=5432
       POSTGRES_USERNAME=test POSTGRES_PASSWORD=test POSTGRES_DATABASE=test
-      SECRET_KEY=ci-test-secret python -m pytest -q
+      SECRET_KEY=ci-test-secret-at-least-32-characters python -m pytest -q --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: backend/report.xml
+
+.frontend_environment:
+  script:
+    - |
+      umask 077
+      if [ -n "${FRONTEND_ENV:-}" ] && [ -f "$FRONTEND_ENV" ]; then
+        cp "$FRONTEND_ENV" "$CI_PROJECT_DIR/frontend.env"
+      else
+        printf '%s\n' "${FRONTEND_ENV:-}" > "$CI_PROJECT_DIR/frontend.env"
+      fi
 
 # 2. СБОРКА DOCKER-ОБРАЗОВ
 .kaniko_build:
@@ -38,7 +55,7 @@ test_backend:
     - dp auth service-acc --key-file "$SPIRIT_DOCKER_SA_KEY"
     - dp auth configure-kaniko
   script:
-    - executor --dockerfile "$CONTEXT/Dockerfile" --context "$CONTEXT" --destination "$IMAGE" --cache=true --skip-push-permission-check || true
+    - executor --dockerfile "$CONTEXT/Dockerfile" --context "$CONTEXT" --destination "$IMAGE" --cache=true --skip-push-permission-check
 
 build_frontend:
   extends: .kaniko_build
@@ -46,7 +63,8 @@ build_frontend:
     CONTEXT: $CI_PROJECT_DIR/frontend
     IMAGE: $FRONTEND_IMAGE_NAME
   script:
-    - if [ -n "${FRONTEND_ENV:-}" ]; then cp "$FRONTEND_ENV" "$CONTEXT/.env" 2>/dev/null || printf '%s\n' "$FRONTEND_ENV" > "$CONTEXT/.env"; fi
+    - !reference [.frontend_environment, script]
+    - cp "$CI_PROJECT_DIR/frontend.env" "$CONTEXT/.env"
     - cp "$(command -v dp)" "$CI_PROJECT_DIR/dp"
     - !reference [.kaniko_build, script]
   artifacts:
@@ -63,6 +81,11 @@ build_backend:
 deploy:
   stage: deploy
   image: kroniak/ssh-client:3.19
+  resource_group: production
+  interruptible: false
+  environment:
+    name: production
+    url: $DEPLOY_URL
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
   needs:
@@ -75,20 +98,31 @@ deploy:
     - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa && chmod 400 ~/.ssh/id_rsa
     - printf "Host *\n  StrictHostKeyChecking no\n" > ~/.ssh/config
   script:
-    - printf '\nCOMPOSE_PROFILES=prod\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_NOTIFICATIONS_ENABLED=true\nFRONTEND_IMAGE_NAME=%s\nBACKEND_IMAGE_NAME=%s\n' "${TELEGRAM_BOT_TOKEN:-}" "$FRONTEND_IMAGE_NAME" "$BACKEND_IMAGE_NAME" >> "$BACKEND_ENV"
-    - ssh $VM "mkdir -p ~/app && rm -rf ~/app/monitoring"
+    - !reference [.frontend_environment, script]
+    - |
+      test -f "$BACKEND_ENV"
+      if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+        printf '\nTELEGRAM_BOT_TOKEN=%s\n' "$TELEGRAM_BOT_TOKEN" >> "$BACKEND_ENV"
+      fi
+      printf '\nCOMPOSE_PROFILES=prod\nFRONTEND_IMAGE_NAME=%s\nBACKEND_IMAGE_NAME=%s\n' "$FRONTEND_IMAGE_NAME" "$BACKEND_IMAGE_NAME" >> "$BACKEND_ENV"
+    - ssh $VM "mkdir -p ~/app"
+    - scp deploy/backup.sh deploy/verify.sh $VM:~/app/
+    - ssh $VM "cd ~/app && sudo sh backup.sh"
+    - ssh $VM "sudo rm -rf ~/app/monitoring"
     - scp -r deploy/docker-compose.yaml deploy/nginx.conf deploy/Caddyfile deploy/monitoring "$SPIRIT_DOCKER_SA_KEY" $VM:~/app/
     - scp "$BACKEND_ENV" $VM:~/app/.env
-    - if [ -n "${FRONTEND_ENV:-}" ] && [ -f "$FRONTEND_ENV" ]; then scp "$FRONTEND_ENV" $VM:~/app/frontend.env; else ssh $VM "touch ~/app/frontend.env"; fi
+    - scp "$CI_PROJECT_DIR/frontend.env" $VM:~/app/frontend.env
     - scp dp $VM:/tmp/dp
     - |
       ssh $VM "
         sudo mv /tmp/dp /usr/local/bin/dp && sudo chmod +x /usr/local/bin/dp &&
         cd ~/app &&
-        [ -f grafana.env ] || echo GF_SECURITY_ADMIN_PASSWORD=\$(openssl rand -hex 12) > grafana.env &&
+        { [ -f grafana.env ] || (umask 077; echo GF_SECURITY_ADMIN_PASSWORD=\$(openssl rand -hex 12) > grafana.env); } &&
         sudo dp auth service-acc --key-file $(basename "$SPIRIT_DOCKER_SA_KEY") &&
         sudo dp auth configure-docker &&
+        sudo docker compose config --quiet &&
         sudo docker compose pull &&
-        sudo docker compose up -d --force-recreate --remove-orphans &&
-        sudo docker compose exec -T nginx nginx -s reload
+        sudo docker compose up -d --force-recreate --remove-orphans --wait --wait-timeout 180 &&
+        sudo docker compose exec -T nginx nginx -s reload &&
+        sudo sh verify.sh '$DEPLOY_URL'
       "

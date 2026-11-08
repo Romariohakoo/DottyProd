@@ -23,16 +23,7 @@ COPY . .
 
 RUN pnpm check
 
-FROM node:24-alpine AS builder
-
-WORKDIR /app
-
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-RUN corepack enable pnpm
-
-COPY --from=dependencies /app/node_modules ./node_modules
-COPY . .
+FROM checker AS builder
 
 RUN pnpm build
 

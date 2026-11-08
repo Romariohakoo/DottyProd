@@ -20,7 +20,7 @@ pnpm dev
 - `pnpm build`: production-сборка
 - `pnpm lint` / `pnpm lint:fix`: ESLint
 - `pnpm typecheck`: генерация типов роутов и `tsc --noEmit`
-- `pnpm check`: lint, typecheck и build
+- `pnpm check`: typecheck и lint без изменения файлов; production build запускается отдельно через `pnpm build`
 
 ## Структура
 

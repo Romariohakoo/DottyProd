@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -77,6 +77,8 @@ export function CreateFromTicketForm({
 }: CreateFromTicketFormProps) {
   const fileId = useId();
   const queryClient = useQueryClient();
+  const request = useRef<{ payload: string; id: string } | null>(null);
+  const uploads = useRef(new WeakMap<File, Map<number, string>>());
   const [kind, setKind] = useState<Kind>("plane");
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -124,39 +126,60 @@ export function CreateFromTicketForm({
       ]
         .filter(Boolean)
         .join(" · ");
+      const data = {
+        type: "movement",
+        title:
+          `${meta.label}${values.number ? ` ${values.number}` : ""}: ${from.name} → ${to.name}`.slice(
+            0,
+            200,
+          ),
+        description: description || null,
+        startAt: startAt.toISOString(),
+        endAt: endAt ? endAt.toISOString() : null,
+        transportType: meta.transport,
+        fromPlace: { id: from.id },
+        toPlace: { id: to.id },
+      };
+      const payload = JSON.stringify({ tripId, data });
+      if (request.current?.payload !== payload) {
+        request.current = { payload, id: crypto.randomUUID() };
+      }
       const event = (
         await api.post<EventDto>(`/trips/${tripId}/events`, {
-          type: "movement",
-          title:
-            `${meta.label}${values.number ? ` ${values.number}` : ""}: ${from.name} → ${to.name}`.slice(
-              0,
-              200,
-            ),
-          description: description || null,
-          startAt: startAt.toISOString(),
-          endAt: endAt ? endAt.toISOString() : null,
-          transportType: meta.transport,
-          fromPlace: { id: from.id },
-          toPlace: { id: to.id },
+          ...data,
+          clientRequestId: request.current.id,
         })
       ).data;
       if (photo) {
         const form = new FormData();
         form.append("file", photo);
-        form.append("client_request_id", crypto.randomUUID());
-        await api
-          .post(`/trips/${tripId}/events/${event.id}/attachments`, form, {
+        let pending = uploads.current.get(photo);
+        if (!pending) {
+          pending = new Map();
+          uploads.current.set(photo, pending);
+        }
+        const id = pending.get(event.id) ?? crypto.randomUUID();
+        pending.set(event.id, id);
+        form.append("client_request_id", id);
+        await api.post(
+          `/trips/${tripId}/events/${event.id}/attachments`,
+          form,
+          {
             headers: { "Content-Type": "multipart/form-data" },
-          })
-          .catch(() => undefined);
+          },
+        );
       }
       return event;
     },
     onSuccess: () => {
+      request.current = null;
+      uploads.current = new WeakMap();
+      onSuccess?.();
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: tripQueryKeys.detail(tripId),
       });
-      onSuccess?.();
     },
   });
 
@@ -389,8 +412,9 @@ export function CreateFromTicketForm({
       ) : null}
       {mutation.isError ? (
         <FormError>
-          Не удалось добавить перемещение. Проверьте, что время не пересекается
-          с другими событиями и попадает в даты поездки.
+          Не удалось сохранить перемещение или фото билета. Проверьте даты
+          поездки и повторите отправку с теми же данными: уже сохранённое
+          перемещение не будет создано повторно.
         </FormError>
       ) : null}
 

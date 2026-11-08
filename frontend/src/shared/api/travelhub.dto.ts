@@ -84,6 +84,7 @@ export interface TripDetailDto {
 }
 
 export interface TripInputDto {
+  clientRequestId?: string;
   title: string;
   country: string;
   startDate: string;
@@ -93,6 +94,7 @@ export interface TripInputDto {
 }
 
 export interface PlaceInputDto {
+  clientRequestId?: string;
   name: string;
   address?: string | null;
   latitude: number;
@@ -104,6 +106,7 @@ export interface PlaceRefDto {
 }
 
 interface EventBaseInputDto {
+  clientRequestId?: string;
   title: string;
   description?: string | null;
   startAt: string;

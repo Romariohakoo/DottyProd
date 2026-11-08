@@ -11,10 +11,11 @@ export const uploadAttachment = async (
   tripId: number,
   eventId: number,
   file: File,
+  clientRequestId: string,
 ) => {
   const form = new FormData();
   form.append("file", file);
-  form.append("client_request_id", crypto.randomUUID());
+  form.append("client_request_id", clientRequestId);
   return (
     await api.post<AttachmentDto>(
       `/trips/${tripId}/events/${eventId}/attachments`,

@@ -10,6 +10,12 @@ services:
         required: false
     ports:
       - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/ready').then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   backend:
     image: ${BACKEND_IMAGE_NAME:-local-backend}
@@ -22,11 +28,19 @@ services:
         required: false
     environment:
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      SERVER_PORT: 1984
     ports:
       - "127.0.0.1:1984:1984"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:1984/api/ready', timeout=4)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   postgres:
     image: postgres:16-alpine
@@ -60,8 +74,10 @@ services:
     volumes:
       - "./nginx.conf:/etc/nginx/conf.d/default.conf:ro"
     depends_on:
-      - frontend
-      - backend
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
   caddy:
     image: caddy:2.10-alpine

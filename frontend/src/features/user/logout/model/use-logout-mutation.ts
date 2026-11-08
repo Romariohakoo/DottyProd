@@ -12,9 +12,12 @@ export function useLogoutMutation() {
 
   return useMutation({
     mutationFn: logout,
-    onSettled: () => {
+    onSettled: async () => {
+      await queryClient.cancelQueries();
+      queryClient.clear();
       clearAccessToken();
       queryClient.setQueryData(userQueryKeys.me, null);
+      window.location.replace("/login");
     },
   });
 }

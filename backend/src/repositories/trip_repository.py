@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.models.trip_model import AttachmentModel, EventModel, PlaceModel, TripMemberModel, TripModel
+from src.models.user_model import UserModel
 
 _EVENT_LOADS = (
     selectinload(EventModel.place),
@@ -118,6 +119,9 @@ class TripRepository:
 
     async def lock_trip(self, trip_id: int) -> None:
         await self.session.execute(select(TripModel.id).where(TripModel.id == trip_id).with_for_update())
+
+    async def lock_owner(self, owner_id: int) -> None:
+        await self.session.execute(select(UserModel.id).where(UserModel.id == owner_id).with_for_update())
 
     async def get_trip_by_request(self, owner_id: int, request_id: UUID) -> TripModel | None:
         return await self.session.scalar(
