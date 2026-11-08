@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Button, FormError } from "@shared/ui";
+import { Button, FormError, Icon } from "@shared/ui";
 
 import { useDeleteEventMutation } from "../model/use-delete-event-mutation";
 
@@ -24,48 +24,47 @@ export function DeleteEventButton({
   );
 
   return (
-    <div className="m3-group border-error-container">
+    <div className="flex flex-col gap-3 border-t border-outline-variant pt-4">
       {isConfirming ? (
-        <>
-          <p className="m3-support text-on-surface">
-            Удалить событие? Это действие нельзя отменить. Места поездки
-            сохранятся.
+        <div className="flex flex-wrap items-center gap-3 rounded-medium bg-error-container p-3 text-on-error-container">
+          <p className="min-w-0 flex-1 text-sm font-semibold">
+            Удалить событие вместе с фото?
           </p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              type="button"
-              disabled={isPending}
-              aria-busy={isPending}
-              onClick={() =>
-                mutate(undefined, { onSuccess: () => onSuccess?.() })
-              }
-              variant="danger"
-            >
-              <span role={isPending ? "status" : undefined}>
-                {isPending ? "Удаляем…" : "Подтвердить удаление"}
-              </span>
-            </Button>
-            <Button
-              type="button"
-              disabled={isPending}
-              onClick={() => {
-                setIsConfirming(false);
-                reset();
-              }}
-              variant="outlined"
-            >
-              Отмена
-            </Button>
-          </div>
-        </>
+          <Button
+            type="button"
+            variant="outlined"
+            disabled={isPending}
+            onClick={() => {
+              setIsConfirming(false);
+              reset();
+            }}
+            className="min-h-10 py-1"
+          >
+            Отмена
+          </Button>
+          <Button
+            type="button"
+            disabled={isPending}
+            aria-busy={isPending}
+            onClick={() =>
+              mutate(undefined, { onSuccess: () => onSuccess?.() })
+            }
+            className="min-h-10 bg-error py-1 text-on-error"
+          >
+            <span role={isPending ? "status" : undefined}>
+              {isPending ? "Удаляем…" : "Удалить"}
+            </span>
+          </Button>
+        </div>
       ) : (
-        <Button
+        <button
           type="button"
           onClick={() => setIsConfirming(true)}
-          variant="danger"
+          className="flex items-center gap-2 self-start text-sm font-bold text-error hover:underline"
         >
+          <Icon name="trash" size={16} />
           Удалить событие
-        </Button>
+        </button>
       )}
       {error ? (
         <FormError>Не удалось удалить событие. Попробуйте ещё раз.</FormError>

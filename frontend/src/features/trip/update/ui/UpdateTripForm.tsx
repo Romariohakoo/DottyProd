@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
+
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 
 import type { Event } from "@entities/event";
 import type { Trip } from "@entities/trip";
-import { formatDate, getEventScheduleError } from "@shared/lib";
-import { Button, DatePicker, FormError, FormField } from "@shared/ui";
+import { TRIP_COVERS } from "@shared/config";
+import { getEventScheduleError, tripCoverUrl } from "@shared/lib";
+import { Button, FormError, Icon, RangeCalendar } from "@shared/ui";
 
 import { useUpdateTripMutation } from "../model/use-update-trip-mutation";
 import { type UpdateTripValues, updateTripSchema } from "../model/validation";
@@ -17,17 +20,25 @@ interface UpdateTripFormProps {
   onSuccess?: () => void;
 }
 
+const shortDate = (value: string) =>
+  new Date(`${value}T12:00:00`).toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "long",
+  });
+
 export function UpdateTripForm({
   trip,
   events,
   onSuccess,
 }: UpdateTripFormProps) {
   const { mutate, isPending, error } = useUpdateTripMutation(trip.id);
+  const [panel, setPanel] = useState<"cover" | "dates" | null>(null);
   const {
     register,
     handleSubmit,
     control,
-    formState: { errors, isValid, isDirty },
+    setValue,
+    formState: { errors, isDirty },
   } = useForm<UpdateTripValues>({
     defaultValues: {
       title: trip.title,
@@ -41,9 +52,10 @@ export function UpdateTripForm({
     resolver: zodResolver(updateTripSchema),
   });
 
-  const startDate = useWatch({ control, name: "startDate" });
-  const endDate = useWatch({ control, name: "endDate" });
-
+  const [startDate, endDate, coverUrl] = useWatch({
+    control,
+    name: ["startDate", "endDate", "coverUrl"],
+  });
   const outsideEvent =
     startDate && endDate && startDate <= endDate
       ? events.find((event) =>
@@ -55,18 +67,15 @@ export function UpdateTripForm({
           ),
         )
       : undefined;
-  const scheduleError = outsideEvent
-    ? `Даты поездки не включают событие «${outsideEvent.title}». Сначала перенесите событие или расширьте даты поездки.`
-    : undefined;
+  const cover = tripCoverUrl(coverUrl || null, trip);
+  const days =
+    startDate && endDate
+      ? Math.round((Date.parse(endDate) - Date.parse(startDate)) / 86_400_000) +
+        1
+      : 0;
 
   const onSubmit = (values: UpdateTripValues) => {
-    if (!isDirty || isPending) return;
-    if (
-      events.some((event) =>
-        getEventScheduleError(event.startAt, event.endAt ?? "", values, []),
-      )
-    )
-      return;
+    if (!isDirty || isPending || outsideEvent) return;
     mutate(
       {
         ...values,
@@ -84,101 +93,145 @@ export function UpdateTripForm({
       onSubmit={(event) => {
         void handleSubmit(onSubmit)(event);
       }}
-      className="m3-form"
+      className="flex flex-col gap-4"
       noValidate
     >
-      <dl className="m3-details rounded-medium bg-surface-container px-6">
-        <div className="m3-detail-row">
-          <dt>Изменена</dt>
-          <dd>
-            <time dateTime={trip.updatedAt}>{formatDate(trip.updatedAt)}</time>
-          </dd>
-        </div>
-      </dl>
-      <fieldset className="m3-form-section">
-        <legend className="m3-label px-2 text-primary">Направление</legend>
-        <FormField
-          label="Название поездки"
-          type="text"
-          maxLength={200}
-          error={errors.title?.message}
-          {...register("title")}
-        />
-        <FormField
-          label="Страна"
-          type="text"
-          maxLength={200}
-          error={errors.country?.message}
-          {...register("country")}
-        />
-      </fieldset>
-      <fieldset className="m3-form-section">
-        <legend className="m3-label px-2 text-primary">Даты путешествия</legend>
-        <div className="grid min-w-0 gap-6">
-          <Controller
-            name="startDate"
-            control={control}
-            render={({ field, fieldState }) => (
-              <Controller
-                name="endDate"
-                control={control}
-                render={({ field: endField, fieldState: endState }) => (
-                  <DatePicker
-                    {...field}
-                    label="Даты путешествия"
-                    endValue={endField.value}
-                    onEndChange={endField.onChange}
-                    requireEnd
-                    disabled={isPending}
-                    error={fieldState.error?.message || endState.error?.message}
-                    aria-describedby={
-                      scheduleError ? "trip-schedule-error" : undefined
-                    }
-                  />
-                )}
-              />
-            )}
+      <div className="relative h-64 overflow-hidden rounded-xlarge bg-gradient-to-br from-primary to-[#8a6cff]">
+        {cover ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={cover} alt="" className="size-full object-cover" />
+        ) : null}
+        <div className="absolute inset-0 bg-gradient-to-t from-scrim/80 via-scrim/10 to-transparent" />
+        <button
+          type="button"
+          aria-expanded={panel === "cover"}
+          onClick={() => setPanel(panel === "cover" ? null : "cover")}
+          className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-surface-bright/95 px-3 py-1.5 text-sm font-bold shadow-lg hover:bg-surface-bright"
+        >
+          <Icon name="image" size={15} />
+          Сменить обложку
+        </button>
+        <div className="absolute right-5 bottom-4 left-5 flex flex-col gap-2 text-on-primary">
+          <textarea
+            {...register("title")}
+            rows={2}
+            maxLength={200}
+            aria-label="Название поездки"
+            placeholder="Название поездки"
+            className="m3-autosize -mx-2 w-[calc(100%+1rem)] resize-none rounded-medium bg-transparent px-2 text-3xl leading-tight font-extrabold tracking-tight outline-none placeholder:text-on-primary/60 hover:bg-white/10 focus:bg-white/15"
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 rounded-full bg-scrim/35 py-1 pr-3 pl-2.5 text-sm font-bold backdrop-blur-sm">
+              <Icon name="globe" size={14} />
+              <input
+                {...register("country")}
+                maxLength={200}
+                aria-label="Страна"
+                placeholder="Страна"
+                size={Math.max(6, trip.country.length)}
+                className="bg-transparent outline-none placeholder:text-on-primary/60"
+              />
+            </label>
+            <button
+              type="button"
+              aria-expanded={panel === "dates"}
+              onClick={() => setPanel(panel === "dates" ? null : "dates")}
+              className="flex items-center gap-1.5 rounded-full bg-scrim/35 py-1 pr-3 pl-2.5 text-sm font-bold backdrop-blur-sm hover:bg-scrim/50"
+            >
+              <Icon name="calendar" size={14} />
+              {startDate
+                ? `${shortDate(startDate)} – ${endDate ? shortDate(endDate) : "…"}`
+                : "Выберите даты"}
+              {days > 0 ? ` · ${days} дн.` : ""}
+            </button>
+          </div>
         </div>
-      </fieldset>
-      <fieldset className="m3-form-section">
-        <legend className="m3-label px-2 text-primary">Детали поездки</legend>
-        <FormField
-          label="Описание (необязательно)"
-          type="text"
-          error={errors.description?.message}
-          {...register("description")}
-        />
-        <FormField
-          label="Путь к обложке (необязательно)"
-          type="text"
-          maxLength={2048}
-          error={errors.coverUrl?.message}
-          {...register("coverUrl")}
-        />
-      </fieldset>
+      </div>
 
-      {scheduleError ? (
-        <div id="trip-schedule-error">
-          <FormError>{scheduleError}</FormError>
+      {panel === "cover" ? (
+        <div className="m3-popover grid grid-cols-4 gap-2 p-3 sm:grid-cols-8">
+          {TRIP_COVERS.map((item) => (
+            <button
+              key={item.src}
+              type="button"
+              aria-pressed={coverUrl === item.src}
+              aria-label={item.label}
+              onClick={() => {
+                setValue("coverUrl", item.src, { shouldDirty: true });
+                setPanel(null);
+              }}
+              className={`relative aspect-[4/3] overflow-hidden rounded-small ${
+                coverUrl === item.src
+                  ? "ring-2 ring-primary ring-offset-2"
+                  : "opacity-80 hover:opacity-100"
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={item.src} alt="" className="size-full object-cover" />
+            </button>
+          ))}
         </div>
       ) : null}
-      {error ? (
+
+      {panel === "dates" ? (
+        <div className="m3-popover flex flex-col gap-3">
+          <RangeCalendar
+            start={startDate}
+            end={endDate}
+            allowPast
+            onChange={(nextStart, nextEnd) => {
+              setValue("startDate", nextStart, { shouldDirty: true });
+              setValue("endDate", nextEnd, {
+                shouldDirty: true,
+                shouldValidate: Boolean(nextEnd),
+              });
+            }}
+          />
+          <button
+            type="button"
+            disabled={!endDate}
+            onClick={() => setPanel(null)}
+            className="m3-button min-h-10 self-end py-1"
+          >
+            Готово
+          </button>
+        </div>
+      ) : null}
+
+      {errors.title || errors.country || errors.endDate ? (
         <FormError>
-          Не удалось сохранить поездку. Проверьте данные и попробуйте ещё раз.
+          {errors.title?.message ??
+            errors.country?.message ??
+            errors.endDate?.message ??
+            ""}
+        </FormError>
+      ) : null}
+      {outsideEvent ? (
+        <FormError>
+          {`В эти даты не попадает «${outsideEvent.title}». Перенесите событие или расширьте даты.`}
         </FormError>
       ) : null}
 
-      <Button
-        type="submit"
-        disabled={!isValid || !isDirty || isPending || Boolean(scheduleError)}
-        aria-busy={isPending}
-        className={`mt-2 w-full ${isPending ? "m3-loading" : ""}`}
-      >
-        <span role={isPending ? "status" : undefined}>
+      <textarea
+        {...register("description")}
+        rows={3}
+        placeholder="Описание"
+        className="resize-none rounded-medium bg-transparent px-3 py-2 text-base leading-relaxed outline-none placeholder:text-on-surface-variant hover:bg-surface-container-low focus:bg-surface-container-low"
+      />
+
+      {error ? (
+        <FormError>Не удалось сохранить. Попробуйте ещё раз.</FormError>
+      ) : null}
+
+      <div className="flex justify-end">
+        <Button
+          type="submit"
+          disabled={!isDirty || isPending || Boolean(outsideEvent) || !endDate}
+        >
+          <Icon name="check" size={18} />
           {isPending ? "Сохраняем…" : "Сохранить"}
-        </span>
-      </Button>
+        </Button>
+      </div>
     </form>
   );
 }

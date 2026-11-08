@@ -96,7 +96,17 @@ export function PlaceMap({
     return <p role="status">Загружаем карту…</p>;
   }
   if (maps.isError) {
-    return <FormError>{maps.error.message}</FormError>;
+    return places?.length ? (
+      <SchemeMap
+        places={places}
+        numbers={numbers}
+        selectedPlaceId={selectedPlaceId}
+        routes={routes}
+        className={className}
+      />
+    ) : (
+      <FormError>{maps.error.message}</FormError>
+    );
   }
 
   const {
@@ -355,4 +365,101 @@ function routeCurve(
       [unproject(arrowBaseRight), unproject(arrow)],
     ],
   };
+}
+
+function SchemeMap({
+  places,
+  numbers,
+  selectedPlaceId,
+  routes,
+  className,
+}: Required<Pick<PlaceMapProps, "places" | "className">> &
+  Pick<PlaceMapProps, "numbers" | "selectedPlaceId" | "routes">) {
+  const longitudes = places.map((place) => place.longitude);
+  const latitudes = places.map((place) => place.latitude);
+  const west = Math.min(...longitudes);
+  const north = Math.max(...latitudes);
+  const spanX = Math.max(Math.max(...longitudes) - west, 1e-6);
+  const spanY = Math.max(north - Math.min(...latitudes), 1e-6);
+  const single = places.length === 1;
+  const rank = (values: number[], value: number) =>
+    values.filter((item) => item < value).length /
+    Math.max(values.length - 1, 1);
+  const point = ([longitude, latitude]: [number, number]) => [
+    single
+      ? 50
+      : 12 +
+        (0.4 * ((longitude - west) / spanX) +
+          0.6 * rank(longitudes, longitude)) *
+          76,
+    single
+      ? 50
+      : 22 +
+        (0.4 * ((north - latitude) / spanY) +
+          0.6 * (1 - rank(latitudes, latitude))) *
+          64,
+  ];
+
+  return (
+    <div
+      role="region"
+      aria-label="Схема мест"
+      className={`${className} relative bg-surface-container-low`}
+      style={{
+        backgroundImage:
+          "radial-gradient(var(--outline-variant) 1px, transparent 1px)",
+        backgroundSize: "22px 22px",
+      }}
+    >
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        className="absolute inset-0 size-full"
+      >
+        {routes?.map((route) => {
+          const [x1, y1] = point(route.from);
+          const [x2, y2] = point(route.to);
+          return (
+            <line
+              key={route.id}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke="#5f59ff"
+              strokeOpacity={0.6}
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeDasharray={route.dash?.join(" ")}
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
+      </svg>
+      {places.map((place) => {
+        const [left, top] = point([place.longitude, place.latitude]);
+        const number = numbers?.get(place.id);
+        const selected = place.id === selectedPlaceId;
+        const label = [place.name, place.address].filter(Boolean).join(", ");
+        return (
+          <div
+            key={place.id}
+            role="img"
+            aria-label={label}
+            title={label}
+            className={`absolute flex -translate-y-1/2 items-center gap-2 ${left > 62 ? "-translate-x-[calc(100%-1rem)] flex-row-reverse" : "-translate-x-4"} ${selected ? "z-10" : ""}`}
+            style={{ left: `${left}%`, top: `${top}%` }}
+          >
+            <span className="m3-marker" data-selected={selected}>
+              {number ?? "•"}
+            </span>
+            {selected || places.length <= 6 ? (
+              <span className="m3-marker-label">{place.name}</span>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 }

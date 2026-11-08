@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Manrope } from "next/font/google";
+import { Cormorant_Garamond, Manrope } from "next/font/google";
 import Link from "next/link";
 import Script from "next/script";
 
@@ -15,6 +15,13 @@ const manrope = Manrope({
   variable: "--font-manrope",
 });
 
+const accentSerif = Cormorant_Garamond({
+  subsets: ["latin", "cyrillic"],
+  weight: "500",
+  style: "italic",
+  variable: "--font-accent-serif",
+});
+
 export const metadata: Metadata = {
   title: "Dotty — ваши путешествия",
   description: "Поездки, места и события вашего путешествия в одном месте.",
@@ -22,7 +29,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ru" className={`${manrope.variable} h-full antialiased`}>
+    <html
+      lang="ru"
+      className={`${manrope.variable} ${accentSerif.variable} h-full antialiased`}
+    >
       <body className="min-h-full">
         {YANDEX_MAPS_API_KEY ? (
           <Script

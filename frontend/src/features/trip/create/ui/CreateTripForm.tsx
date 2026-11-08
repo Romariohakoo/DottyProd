@@ -139,7 +139,7 @@ export function CreateTripForm({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={cover.src} alt="" className="size-full object-cover" />
               {coverUrl === cover.src ? (
-                <span className="m3-dot absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-primary text-on-primary">
+                <span className="absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-primary text-on-primary">
                   <Icon name="check" size={12} />
                 </span>
               ) : null}

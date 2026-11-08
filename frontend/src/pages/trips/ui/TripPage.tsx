@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { LngLat } from "ymaps3";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -8,31 +9,28 @@ import {
   EventDayTimeline,
   EventDetails,
   EventList,
+  timelineX,
   useEventQuery,
 } from "@entities/event";
-import type { LngLat } from "ymaps3";
-
 import {
-  geocodeCoordinates,
   PlaceDetails,
   PlaceList,
+  type StopValue,
+  geocodeCoordinates,
   usePlaceQuery,
 } from "@entities/place";
 import { TripDetails, useTripQuery } from "@entities/trip";
-import { CreateEventForm } from "@features/event/create";
+import { AddPlaceForm, CreateEventForm } from "@features/event/create";
 import { DeleteEventButton } from "@features/event/delete";
 import { CreateFromTicketForm } from "@features/event/from-ticket";
-import { UpdateEventForm } from "@features/event/update";
-import {
-  CreatePlaceForm,
-  type CreatePlaceValues,
-} from "@features/place/create";
 import { DeletePlaceButton } from "@features/place/delete";
 import { UpdatePlaceForm } from "@features/place/update";
 import { DeleteTripButton } from "@features/trip/delete";
 import { UpdateTripForm } from "@features/trip/update";
+import { tripCoverUrl } from "@shared/lib";
 import { Button, Dialog, FormError, Icon, StatusMessage } from "@shared/ui";
 import { EventInspector } from "@widgets/event-inspector";
+import { TripItinerary } from "@widgets/trip-itinerary";
 import { TripMap } from "@widgets/trip-map";
 
 interface TripPageProps {
@@ -40,17 +38,18 @@ interface TripPageProps {
 }
 
 const TABS = [
-  { id: "base", label: "Маршрут" },
+  { id: "base", label: "План" },
+  { id: "timeline", label: "Таймлайн" },
   { id: "places", label: "Места" },
-  { id: "events", label: "События" },
 ];
 
 const DAY_MS = 86_400_000;
+const ZOOM_LEVELS = [1, 1.6, 2.5, 4, 6];
 const HOUR_MS = 3_600_000;
 
 const POPUP_TITLES: Record<string, string> = {
   "create-place": "Новое место",
-  "create-event": "Новое событие",
+  "create-event": "Добавить в план",
   ticket: "Добавить из билета",
   place: "Место",
   event: "Событие",
@@ -63,34 +62,38 @@ export function TripPage({ tripId }: TripPageProps) {
   const searchParams = useSearchParams();
   const openedTab = searchParams?.get("opened-tab");
   const activeTab =
-    openedTab === "places" || openedTab === "events" ? openedTab : "base";
+    openedTab === "places" || openedTab === "events" || openedTab === "timeline"
+      ? openedTab
+      : "base";
   const popupType = searchParams?.get("open-popup-type");
   const selectedId = Number(searchParams?.get("open-popup-id"));
   const detail = useTripQuery(tripId);
   const selectedPlace = usePlaceQuery(tripId, selectedId);
   const selectedEvent = useEventQuery(tripId, selectedId);
-  const [requestedDay, setDay] = useState<number | "all">("all");
-  const activeIdParam = searchParams?.get("active-event-id");
-  const parsedActiveId =
-    activeIdParam && /^\d+$/.test(activeIdParam) ? Number(activeIdParam) : NaN;
+  const dayParam = searchParams?.get("day");
+  const focusParam = Number(searchParams?.get("selected-event"));
+  const zoomParam = Number(searchParams?.get("zoom"));
   const focusedId =
-    Number.isSafeInteger(parsedActiveId) && parsedActiveId > 0
-      ? parsedActiveId
-      : null;
+    Number.isInteger(focusParam) && focusParam > 0 ? focusParam : null;
+  const zoom =
+    Number.isInteger(zoomParam) &&
+    zoomParam >= 0 &&
+    zoomParam < ZOOM_LEVELS.length
+      ? zoomParam
+      : 0;
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const [mapOpen, setMapOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [picking, setPicking] = useState(false);
   const [showOrganizations, setShowOrganizations] = useState(false);
   const [pointPending, setPointPending] = useState(false);
   const [pointError, setPointError] = useState("");
-  const [placeDraft, setPlaceDraft] =
-    useState<Partial<CreatePlaceValues> | null>(null);
-  const [pointNotice, setPointNotice] = useState("");
+  const [pickedPlace, setPickedPlace] = useState<StopValue | null>(null);
   const pointRequest = useRef<AbortController | null>(null);
   const timelineDrag = useRef<{
     pointerId: number;
     startX: number;
-    startY: number;
     scrollLeft: number;
-    scrollTop: number;
     dragged: boolean;
   } | null>(null);
   const suppressTimelineClick = useRef(false);
@@ -105,18 +108,6 @@ export function TripPage({ tripId }: TripPageProps) {
   }, []);
 
   useEffect(() => {
-    return cancelPicking;
-  }, [tripId, searchParams, detail.data?.role, cancelPicking]);
-
-  useEffect(() => {
-    if (popupType !== "create-place") return;
-    return () => {
-      setPlaceDraft(null);
-      setPointNotice("");
-    };
-  }, [popupType, tripId]);
-
-  useEffect(() => {
     if (!picking) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") cancelPicking();
@@ -124,6 +115,7 @@ export function TripPage({ tripId }: TripPageProps) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [picking, cancelPicking]);
+  const canEditTrip = detail.data?.role !== "viewer";
   const isSelectedPopup =
     popupType === "place" ||
     popupType === "event" ||
@@ -134,20 +126,17 @@ export function TripPage({ tripId }: TripPageProps) {
     popupType === "ticket";
 
   const closePopup = useCallback(() => {
-    setPlaceDraft(null);
-    setPointNotice("");
     const params = new URLSearchParams(searchParams?.toString());
     params.delete("open-popup-type");
     params.delete("open-popup-id");
+    params.delete("add-day");
+    params.delete("tile");
     router.replace(`${pathname}${params.size ? `?${params}` : ""}`, {
       scroll: false,
     });
   }, [pathname, router, searchParams]);
 
   const openPopup = (type: string, id?: number) => {
-    cancelPicking();
-    setPlaceDraft(null);
-    setPointNotice("");
     const params = new URLSearchParams(searchParams?.toString());
     params.set("open-popup-type", type);
     if (id === undefined) params.delete("open-popup-id");
@@ -155,18 +144,31 @@ export function TripPage({ tripId }: TripPageProps) {
     router.push(`${pathname}?${params}`, { scroll: false });
   };
 
-  const selectEvent = (id: number | null) => {
-    cancelPicking();
+  const setParams = (values: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams?.toString());
-    if (id === null) params.delete("active-event-id");
-    else params.set("active-event-id", String(id));
-    router.push(`${pathname}${params.size ? `?${params}` : ""}`, {
+    Object.entries(values).forEach(([key, value]) => {
+      if (value === null) params.delete(key);
+      else params.set(key, value);
+    });
+    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, {
       scroll: false,
     });
   };
 
+  const pushParams = (values: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams?.toString());
+    Object.entries(values).forEach(([key, value]) => {
+      if (value === null) params.delete(key);
+      else params.set(key, value);
+    });
+    router.push(`${pathname}?${params}`, { scroll: false });
+  };
+
+  const setFocusedId = (id: number | null) =>
+    setParams({ "selected-event": id === null ? null : String(id) });
+
   const selectCoordinates = async (coordinates: LngLat) => {
-    if (!picking || detail.data?.role === "viewer" || !detail.data) return;
+    if (!picking) return;
     pointRequest.current?.abort();
     const request = new AbortController();
     pointRequest.current = request;
@@ -175,38 +177,95 @@ export function TripPage({ tripId }: TripPageProps) {
     try {
       const address = await geocodeCoordinates(coordinates, request.signal);
       if (request.signal.aborted || pointRequest.current !== request) return;
-      setPlaceDraft({
-        name: "",
-        address: address ?? "",
-        longitude: coordinates[0],
-        latitude: coordinates[1],
+      setPickedPlace({
+        kind: "new",
+        place: {
+          name: (address?.split(",")[0] ?? "Точка на карте").slice(0, 200),
+          address: address ?? null,
+          longitude: coordinates[0],
+          latitude: coordinates[1],
+        },
       });
-      setPointNotice(
-        address
-          ? ""
-          : "Адрес не найден. Координаты сохранены; укажите название и при необходимости адрес вручную.",
-      );
-      setPicking(false);
-      const params = new URLSearchParams(searchParams?.toString());
-      params.set("open-popup-type", "create-place");
-      params.delete("open-popup-id");
-      router.push(`${pathname}?${params}`, { scroll: false });
+      cancelPicking();
+      pushParams({ "open-popup-type": "create-place", "open-popup-id": null });
     } catch (error) {
       if (!request.signal.aborted && pointRequest.current === request) {
         setPointError(
           error instanceof Error
             ? error.message
-            : "Не удалось определить адрес. Повторите выбор точки.",
+            : "Не удалось определить адрес. Выберите точку ещё раз.",
         );
-      }
-    } finally {
-      if (!request.signal.aborted && pointRequest.current === request)
         setPointPending(false);
+      }
     }
   };
 
+  const mapControls = canEditTrip ? (
+    <>
+      <div className="m3-map-tools">
+        <Button
+          variant={picking ? "filled" : "tonal"}
+          aria-pressed={picking}
+          onClick={() => {
+            if (picking) cancelPicking();
+            else {
+              setPointError("");
+              setPicking(true);
+            }
+          }}
+        >
+          <Icon name={picking ? "close" : "pin"} size={16} />
+          {picking ? "Отмена" : "Поставить точку"}
+        </Button>
+        {picking ? (
+          <p role="status" className="m3-map-hint">
+            {pointPending ? "Определяем адрес…" : "Нажмите на карту"}
+          </p>
+        ) : null}
+        {picking && pointError ? (
+          <div className="m3-map-hint">
+            <FormError>{pointError}</FormError>
+          </div>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        aria-pressed={showOrganizations}
+        aria-label={
+          showOrganizations
+            ? "Скрыть организации и транспорт"
+            : "Показать организации и транспорт"
+        }
+        title={
+          showOrganizations
+            ? "Скрыть организации и транспорт"
+            : "Показать организации и транспорт"
+        }
+        onClick={() => setShowOrganizations((visible) => !visible)}
+        className="m3-map-layers"
+      >
+        <Icon name="buildings" size={18} />
+      </button>
+    </>
+  ) : null;
+
+  const mapProps = {
+    selectedEventId: focusedId,
+    onSelectEvent: (id: number) => setFocusedId(id),
+    showOrganizations,
+    picking: picking && canEditTrip,
+    onSelectCoordinates: (coordinates: LngLat) => {
+      void selectCoordinates(coordinates);
+    },
+    onUnavailablePoi: () => {
+      pointRequest.current?.abort();
+      pointRequest.current = null;
+      setPointPending(false);
+      setPointError("Выберите точку рядом с организацией.");
+    },
+  };
+
   const openTab = (tabId: string) => {
-    cancelPicking();
     const params = new URLSearchParams(searchParams?.toString());
     params.set("opened-tab", tabId);
     router.push(`${pathname}?${params}`, { scroll: false });
@@ -229,28 +288,6 @@ export function TripPage({ tripId }: TripPageProps) {
       ),
     [detail.data?.timeline],
   );
-
-  const focused = timeline.find((event) => event.id === focusedId) ?? null;
-
-  useEffect(() => {
-    if (activeIdParam == null || !detail.isSuccess || detail.isFetching) return;
-    if (focusedId !== null && timeline.some((event) => event.id === focusedId))
-      return;
-    const params = new URLSearchParams(searchParams?.toString());
-    params.delete("active-event-id");
-    router.replace(`${pathname}${params.size ? `?${params}` : ""}`, {
-      scroll: false,
-    });
-  }, [
-    activeIdParam,
-    detail.isSuccess,
-    detail.isFetching,
-    focusedId,
-    timeline,
-    pathname,
-    router,
-    searchParams,
-  ]);
 
   const days = useMemo(() => {
     if (!trip) return [];
@@ -283,13 +320,28 @@ export function TripPage({ tripId }: TripPageProps) {
     return numbers;
   }, [timeline, detail.data?.places]);
 
-  const requestedRange = requestedDay === "all" ? null : days[requestedDay];
-  const focusedOutsideDay =
-    focused &&
-    requestedRange &&
-    (Date.parse(focused.startAt) >= requestedRange.end ||
-      Date.parse(focused.endAt ?? focused.startAt) < requestedRange.start);
-  const day = requestedDay;
+  const focusedEvent = timeline.find((event) => event.id === focusedId);
+  const parsedDay = Number(dayParam);
+  const day: number | "all" =
+    dayParam === "all"
+      ? "all"
+      : Number.isInteger(parsedDay) && days[parsedDay]
+        ? parsedDay
+        : focusedEvent
+          ? Math.max(
+              0,
+              days.findIndex(
+                (item) => Date.parse(focusedEvent.startAt) < item.end,
+              ),
+            )
+          : 0;
+  const selectedDayKey =
+    day === "all" || !days[day]
+      ? undefined
+      : new Date(days[day].start).toLocaleDateString("sv-SE");
+  const setDay = (value: number | "all") =>
+    setParams({ day: String(value), zoom: null });
+
   const range =
     day === "all" || !days[day]
       ? {
@@ -303,27 +355,33 @@ export function TripPage({ tripId }: TripPageProps) {
     return end >= range.start && start < range.end;
   });
 
-  let windowStart = range.start;
-  let windowEnd = range.end;
-  let hourWidth = Math.max(10, 1100 / ((range.end - range.start) / HOUR_MS));
-  if (day !== "all" && dayEvents.length) {
-    const starts = dayEvents.map((event) => Date.parse(event.startAt));
-    const ends = dayEvents.map((event) =>
-      event.endAt ? Date.parse(event.endAt) : Date.parse(event.startAt),
-    );
-    windowStart = Math.max(
-      range.start,
-      Math.floor((Math.min(...starts) - HOUR_MS) / HOUR_MS) * HOUR_MS,
-    );
-    windowEnd = Math.min(
-      range.end,
-      Math.ceil((Math.max(...ends) + 2 * HOUR_MS) / HOUR_MS) * HOUR_MS,
-    );
-    if (windowEnd - windowStart < 8 * HOUR_MS)
-      windowEnd = Math.min(range.end, windowStart + 8 * HOUR_MS);
-    hourWidth = 90;
-  }
+  const windowStart = range.start;
+  const windowEnd = range.end;
+  const totalHours = Math.max(1, (windowEnd - windowStart) / HOUR_MS);
+  const fitWidth = Math.max(8, ((scrollWidth || 1000) - 64) / totalHours);
+  const hourWidth = fitWidth * ZOOM_LEVELS[zoom];
+  const anchorEvent =
+    dayEvents.find((event) => event.id === focusedId) ?? dayEvents[0];
 
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() =>
+      setScrollWidth(element.clientWidth),
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [activeTab, dayEvents.length]);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || !anchorEvent) return;
+    const left =
+      timelineX(Date.parse(anchorEvent.startAt), windowStart, hourWidth) - 120;
+    element.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+  }, [anchorEvent, windowStart, hourWidth]);
+
+  const focused = timeline.find((event) => event.id === focusedId) ?? null;
   const focusedPlaceId = focused
     ? focused.type === "movement"
       ? focused.toPlace.id
@@ -339,7 +397,7 @@ export function TripPage({ tripId }: TripPageProps) {
     ),
   );
   const mapPlaces =
-    day === "all"
+    day === "all" || !dayPlaceIds.size
       ? (detail.data?.places ?? [])
       : (detail.data?.places ?? []).filter((place) =>
           dayPlaceIds.has(place.id),
@@ -363,8 +421,27 @@ export function TripPage({ tripId }: TripPageProps) {
           <FormError>Некорректный ID поездки.</FormError>
         </div>
       ) : detail.isPending ? (
-        <div className="m3-page">
-          <StatusMessage loading>Загружаем поездку…</StatusMessage>
+        <div
+          role="status"
+          aria-label="Загружаем поездку"
+          className="m3-plan pt-[4.25rem]"
+        >
+          <div className="m3-plan-mapcol">
+            <div className="m3-plan-mapframe m3-skeleton" />
+          </div>
+          <div className="m3-plan-panel">
+            <div className="m3-plan-doc" aria-hidden="true">
+              <div className="m3-skeleton h-14 w-2/3" />
+              <div className="m3-skeleton h-56 rounded-xlarge" />
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="m3-skeleton h-16" />
+                <div className="m3-skeleton h-16" />
+                <div className="m3-skeleton h-16" />
+              </div>
+              <div className="m3-skeleton h-48 rounded-large" />
+              <div className="m3-skeleton h-48 rounded-large" />
+            </div>
+          </div>
         </div>
       ) : detail.isError || !detail.data || !trip ? (
         <div className="m3-page">
@@ -382,17 +459,17 @@ export function TripPage({ tripId }: TripPageProps) {
             >
               <Icon name="back" />
             </Link>
-            {trip.coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={trip.coverUrl}
-                alt=""
-                className="hidden size-10 shrink-0 rounded-small object-cover sm:block"
-              />
-            ) : null}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={tripCoverUrl(trip.coverUrl, trip)}
+              alt=""
+              className="hidden size-10 shrink-0 rounded-[var(--radius-xs)] object-cover shadow-1 sm:block"
+            />
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-extrabold">{trip.title}</h1>
-              <p className="truncate text-sm text-on-surface-variant">
+              <p className="truncate text-lg leading-tight font-extrabold tracking-tight">
+                {trip.title}
+              </p>
+              <p className="truncate text-[0.8125rem] font-semibold text-on-surface-variant">
                 {trip.country} ·{" "}
                 {new Date(`${trip.startDate}T12:00:00`).toLocaleDateString(
                   "ru-RU",
@@ -427,14 +504,14 @@ export function TripPage({ tripId }: TripPageProps) {
                     : "О поездке"
                 }
                 onClick={() => openPopup("trip", tripId)}
-                className="m3-icon-button"
+                className="m3-icon-button bg-surface-bright shadow-1 hover:bg-surface-container-low"
               >
                 <Icon name="edit" size={18} />
               </button>
               {canEdit ? (
                 <>
                   <Button
-                    variant="tonal"
+                    variant="outlined"
                     onClick={() => openPopup("ticket")}
                     className="hidden md:inline-flex"
                   >
@@ -451,6 +528,76 @@ export function TripPage({ tripId }: TripPageProps) {
           </header>
 
           {activeTab === "base" ? (
+            <div className="m3-plan" data-map={mapOpen ? "open" : "closed"}>
+              <div className="m3-plan-mapcol">
+                <div className="m3-plan-mapframe">
+                  <TripMap
+                    places={detail.data.places}
+                    events={timeline}
+                    numbers={placeNumbers}
+                    selectedPlaceId={focusedPlaceId}
+                    {...mapProps}
+                    className="h-full"
+                  />
+                  {mapControls}
+                  {focused ? (
+                    <div
+                      key={focused.id}
+                      className="m3-plan-float"
+                      aria-label="Выбранное событие"
+                    >
+                      <EventInspector
+                        tripId={tripId}
+                        event={focused}
+                        coverUrl={tripCoverUrl(trip.coverUrl, trip)}
+                        placeNumbers={placeNumbers}
+                        canEdit={canEdit}
+                        onEdit={(id) => openPopup("event", id)}
+                        onClose={() => setFocusedId(null)}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-pressed={mapOpen}
+                onClick={() => setMapOpen((open) => !open)}
+                className="m3-map-toggle"
+              >
+                <Icon name={mapOpen ? "list" : "map"} size={18} />
+                {mapOpen ? "Скрыть карту" : "Карта"}
+              </button>
+              <div className="m3-plan-panel">
+                <TripItinerary
+                  trip={trip}
+                  events={timeline}
+                  numbers={placeNumbers}
+                  coverUrl={tripCoverUrl(trip.coverUrl, trip)}
+                  selectedId={focusedId}
+                  canEdit={canEdit}
+                  onSelect={(id) => setFocusedId(id === focusedId ? null : id)}
+                  onAdd={(key) =>
+                    pushParams({
+                      "open-popup-type": "create-place",
+                      "open-popup-id": null,
+                      "add-day": key,
+                    })
+                  }
+                  onBooking={(tile) =>
+                    tile === "ticket"
+                      ? openPopup("ticket")
+                      : pushParams({
+                          "open-popup-type": "create-event",
+                          "open-popup-id": null,
+                          tile,
+                        })
+                  }
+                  onEditTrip={() => openPopup("trip", tripId)}
+                />
+              </div>
+            </div>
+          ) : activeTab === "timeline" ? (
             <div className="m3-trip-body">
               <div className="m3-trip-main">
                 <div className="m3-trip-map">
@@ -459,85 +606,15 @@ export function TripPage({ tripId }: TripPageProps) {
                     events={dayEvents}
                     numbers={placeNumbers}
                     selectedPlaceId={focusedPlaceId}
-                    selectedEventId={focused?.id ?? null}
-                    onSelectEvent={selectEvent}
-                    showOrganizations={showOrganizations}
-                    picking={picking && canEdit}
-                    onSelectCoordinates={(coordinates) => {
-                      void selectCoordinates(coordinates);
-                    }}
-                    onUnavailablePoi={() => {
-                      pointRequest.current?.abort();
-                      pointRequest.current = null;
-                      setPointPending(false);
-                      setPointError(
-                        "Добавление организации по её метке пока недоступно. Выберите точку рядом или добавьте место вручную.",
-                      );
-                    }}
+                    {...mapProps}
                     className="h-full"
                   />
-                  <div className="absolute top-4 left-4 z-20 flex max-w-full flex-col items-start gap-2 pr-8">
-                    {canEdit ? (
-                      <Button
-                        variant={picking ? "filled" : "tonal"}
-                        aria-pressed={picking}
-                        onClick={() => {
-                          if (picking) cancelPicking();
-                          else {
-                            setPointError("");
-                            setPointPending(false);
-                            setPicking(true);
-                          }
-                        }}
-                      >
-                        <Icon name={picking ? "close" : "pin"} size={16} />
-                        {picking ? "Отменить добавление" : "Поставить точку"}
-                      </Button>
-                    ) : null}
-                    {picking ? (
-                      <div
-                        className="max-w-72 rounded-small bg-surface-bright p-3 text-sm shadow-lg"
-                        role="status"
-                      >
-                        {pointPending
-                          ? "Определяем адрес… Можно выбрать другую точку."
-                          : "Выберите точку на карте. Escape — отмена. Место также можно добавить вручную на вкладке «Места»."}
-                      </div>
-                    ) : null}
-                    {pointError && picking ? (
-                      <div className="max-w-72 rounded-small bg-surface-bright p-3 shadow-lg">
-                        <FormError>{pointError}</FormError>
-                      </div>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    aria-label={
-                      showOrganizations
-                        ? "Скрыть организации и транспорт"
-                        : "Показать организации и транспорт"
-                    }
-                    title={
-                      showOrganizations
-                        ? "Скрыть организации и транспорт"
-                        : "Показать организации и транспорт"
-                    }
-                    aria-pressed={showOrganizations}
-                    onClick={() => setShowOrganizations((visible) => !visible)}
-                    className={`m3-icon-button absolute top-4 right-4 z-20 !w-12 border-2 !bg-surface-bright shadow-lg hover:!bg-surface-bright ${showOrganizations ? "border-primary text-primary" : "border-transparent text-on-surface"}`}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="flex h-6 items-center justify-center gap-1.5"
-                    >
-                      <Icon name="buildings" size={20} />
-                      <Icon name="faBus" size={18} />
-                    </span>
-                  </button>
-                  <span className="absolute right-4 bottom-4 rounded-small bg-surface-bright px-3 py-2 text-sm font-semibold shadow-lg">
+                  {mapControls}
+                  <span className="m3-map-chip">
+                    <span className="size-2 rounded-full bg-primary" />
                     {day === "all"
                       ? `Вся поездка · ${detail.data.places.length} мест`
-                      : `${weekdayLabel(range.start)} · ${dayPlaceIds.size} мест`}
+                      : `${weekdayLabel(range.start)} · ${dayPlaceIds.size} мест · ${dayEvents.filter((event) => event.type === "movement").length} перемещ.`}
                   </span>
                 </div>
 
@@ -571,16 +648,47 @@ export function TripPage({ tripId }: TripPageProps) {
                         </button>
                       ))}
                     </div>
+                    <div className="ml-auto flex items-center gap-1">
+                      <button
+                        type="button"
+                        aria-label="Уменьшить масштаб"
+                        disabled={zoom === 0}
+                        onClick={() => setParams({ zoom: String(zoom - 1) })}
+                        className="m3-icon-button size-8 disabled:opacity-40"
+                      >
+                        <Icon name="minus" size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setParams({ zoom: null })}
+                        className="min-w-24 rounded-small px-2 py-1 text-xs font-bold text-on-surface-variant hover:bg-surface-container"
+                      >
+                        {zoom === 0
+                          ? day === "all"
+                            ? "Вся поездка"
+                            : "Весь день"
+                          : `× ${ZOOM_LEVELS[zoom]}`}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Увеличить масштаб"
+                        disabled={zoom === ZOOM_LEVELS.length - 1}
+                        onClick={() => setParams({ zoom: String(zoom + 1) })}
+                        className="m3-icon-button size-8 disabled:opacity-40"
+                      >
+                        <Icon name="plus" size={16} />
+                      </button>
+                    </div>
                     <ul
                       aria-label="Обозначения"
-                      className="ml-auto flex flex-wrap gap-4 text-xs font-bold text-on-surface-variant"
+                      className="flex w-full flex-wrap gap-4 text-xs font-bold text-on-surface-variant xl:w-auto"
                     >
                       <li className="flex items-center gap-2">
-                        <span className="h-3 w-7 rounded-[5px] bg-primary-container ring-[1.5px] ring-[#c9c7f5] ring-inset" />
+                        <span className="h-3 w-7 rounded-[5px] bg-primary-container ring-[1.5px] ring-primary/30 ring-inset" />
                         Длится
                       </li>
                       <li className="flex items-center gap-2">
-                        <span className="m3-dot size-3 rounded-full border-[3px] border-primary" />
+                        <span className="size-3 rounded-full border-[3px] border-primary" />
                         Момент
                       </li>
                       <li className="flex items-center gap-2">
@@ -589,17 +697,23 @@ export function TripPage({ tripId }: TripPageProps) {
                       </li>
                     </ul>
                   </div>
-                  {focusedOutsideDay ? (
-                    <p role="status" className="m3-support px-4 pt-2">
-                      Выбранное событие относится к другому дню и остаётся в
-                      инспекторе.{" "}
-                      <Button variant="text" onClick={() => setDay("all")}>
-                        Показать все дни
-                      </Button>
-                    </p>
-                  ) : null}
+                  <p className="px-4 pt-2 text-sm font-extrabold">
+                    {day === "all"
+                      ? "Вся поездка"
+                      : new Date(range.start).toLocaleDateString("ru-RU", {
+                          weekday: "long",
+                          day: "numeric",
+                          month: "long",
+                        })}
+                    <span className="ml-2 font-semibold text-on-surface-variant">
+                      {dayEvents.length
+                        ? `${dayEvents.length} ${dayEvents.length === 1 ? "событие" : dayEvents.length < 5 ? "события" : "событий"}`
+                        : ""}
+                    </span>
+                  </p>
                   {dayEvents.length ? (
                     <div
+                      ref={scrollRef}
                       className={`m3-timeline-scroll select-none ${timelineDragging ? "cursor-grabbing" : "cursor-grab"}`}
                       onPointerDown={(event) => {
                         suppressTimelineClick.current = false;
@@ -612,9 +726,7 @@ export function TripPage({ tripId }: TripPageProps) {
                         timelineDrag.current = {
                           pointerId: event.pointerId,
                           startX: event.clientX,
-                          startY: event.clientY,
                           scrollLeft: event.currentTarget.scrollLeft,
-                          scrollTop: event.currentTarget.scrollTop,
                           dragged: false,
                         };
                       }}
@@ -622,9 +734,7 @@ export function TripPage({ tripId }: TripPageProps) {
                         const drag = timelineDrag.current;
                         if (!drag || drag.pointerId !== event.pointerId) return;
                         const deltaX = event.clientX - drag.startX;
-                        const deltaY = event.clientY - drag.startY;
-                        if (!drag.dragged && Math.hypot(deltaX, deltaY) < 5)
-                          return;
+                        if (!drag.dragged && Math.abs(deltaX) < 5) return;
                         if (!drag.dragged) {
                           drag.dragged = true;
                           setTimelineDragging(true);
@@ -635,7 +745,6 @@ export function TripPage({ tripId }: TripPageProps) {
                         event.preventDefault();
                         event.currentTarget.scrollLeft =
                           drag.scrollLeft - deltaX;
-                        event.currentTarget.scrollTop = drag.scrollTop - deltaY;
                       }}
                       onPointerUp={(event) => {
                         const drag = timelineDrag.current;
@@ -655,16 +764,6 @@ export function TripPage({ tripId }: TripPageProps) {
                         suppressTimelineClick.current = false;
                         setTimelineDragging(false);
                       }}
-                      onPointerLeave={() => {
-                        if (!timelineDrag.current?.dragged)
-                          timelineDrag.current = null;
-                      }}
-                      onLostPointerCapture={() => {
-                        if (timelineDrag.current?.dragged)
-                          suppressTimelineClick.current = true;
-                        timelineDrag.current = null;
-                        setTimelineDragging(false);
-                      }}
                       onClickCapture={(event) => {
                         if (suppressTimelineClick.current && event.detail > 0) {
                           event.preventDefault();
@@ -679,9 +778,9 @@ export function TripPage({ tripId }: TripPageProps) {
                         windowStart={windowStart}
                         windowEnd={windowEnd}
                         hourWidth={hourWidth}
-                        selectedId={focused?.id ?? null}
+                        selectedId={focusedId}
                         placeNumbers={placeNumbers}
-                        onSelect={selectEvent}
+                        onSelect={setFocusedId}
                       />
                     </div>
                   ) : (
@@ -708,11 +807,11 @@ export function TripPage({ tripId }: TripPageProps) {
                 <EventInspector
                   tripId={tripId}
                   event={focused}
-                  coverUrl={trip.coverUrl}
+                  coverUrl={tripCoverUrl(trip.coverUrl, trip)}
                   placeNumbers={placeNumbers}
                   canEdit={canEdit}
                   onEdit={(id) => openPopup("event", id)}
-                  onClose={() => selectEvent(null)}
+                  onClose={() => setFocusedId(null)}
                 />
               </aside>
             </div>
@@ -734,6 +833,7 @@ export function TripPage({ tripId }: TripPageProps) {
                   ) : (
                     <PlaceList
                       places={detail.data.places}
+                      numbers={placeNumbers}
                       onSelect={(id) => openPopup("place", id)}
                     />
                   )}
@@ -765,12 +865,26 @@ export function TripPage({ tripId }: TripPageProps) {
       )}
 
       {isSelectedPopup || isCreatePopup ? (
-        <Dialog labelledBy="entity-popup-heading" onClose={closePopup}>
+        <Dialog
+          labelledBy="entity-popup-heading"
+          onClose={closePopup}
+          size={
+            popupType === "create-place" ||
+            popupType === "create-event" ||
+            popupType === "place" ||
+            popupType === "event" ||
+            popupType === "trip"
+              ? "medium"
+              : "default"
+          }
+        >
           <section className="m3-dialog-content">
             <div className="m3-dialog-heading">
-              <h2 id="entity-popup-heading" className="m3-title">
-                {POPUP_TITLES[popupType ?? ""] ?? "Поездка"}
-              </h2>
+              <div className="min-w-0">
+                <h2 id="entity-popup-heading" className="m3-title">
+                  {POPUP_TITLES[popupType ?? ""] ?? "Поездка"}
+                </h2>
+              </div>
               <button
                 type="button"
                 onClick={closePopup}
@@ -786,17 +900,18 @@ export function TripPage({ tripId }: TripPageProps) {
               ) : detail.data.role === "viewer" ? (
                 <FormError>Недостаточно прав для создания.</FormError>
               ) : popupType === "create-place" ? (
-                <>
-                  {pointNotice ? (
-                    <StatusMessage>{pointNotice}</StatusMessage>
-                  ) : null}
-                  <CreatePlaceForm
-                    key={`create-place-${tripId}-${placeDraft?.longitude ?? "manual"}-${placeDraft?.latitude ?? ""}`}
-                    tripId={tripId}
-                    initialValues={placeDraft ?? undefined}
-                    onSuccess={closePopup}
-                  />
-                </>
+                <AddPlaceForm
+                  tripId={tripId}
+                  trip={detail.data.trip}
+                  events={detail.data.timeline}
+                  places={detail.data.places}
+                  defaultDay={searchParams?.get("add-day") ?? selectedDayKey}
+                  initialPlace={pickedPlace ?? undefined}
+                  onSuccess={() => {
+                    setPickedPlace(null);
+                    closePopup();
+                  }}
+                />
               ) : popupType === "ticket" ? (
                 <CreateFromTicketForm
                   tripId={tripId}
@@ -810,6 +925,9 @@ export function TripPage({ tripId }: TripPageProps) {
                   trip={detail.data.trip}
                   events={detail.data.timeline}
                   places={detail.data.places}
+                  defaultDay={selectedDayKey}
+                  initialTile={searchParams?.get("tile") ?? undefined}
+                  onOpenTicket={() => openPopup("ticket")}
                   onSuccess={closePopup}
                 />
               )
@@ -846,13 +964,13 @@ export function TripPage({ tripId }: TripPageProps) {
               selectedEvent.data ? (
                 <>
                   {canEdit ? (
-                    <UpdateEventForm
-                      key={`update-event-${selectedEvent.data.id}`}
+                    <CreateEventForm
+                      key={`edit-event-${selectedEvent.data.id}`}
                       tripId={tripId}
                       trip={detail.data.trip}
                       events={detail.data.timeline}
-                      event={selectedEvent.data}
                       places={detail.data.places}
+                      editing={selectedEvent.data}
                       onSuccess={closePopup}
                     />
                   ) : (
@@ -864,17 +982,8 @@ export function TripPage({ tripId }: TripPageProps) {
                       tripId={tripId}
                       eventId={selectedEvent.data.id}
                       onSuccess={() => {
-                        const params = new URLSearchParams(
-                          searchParams?.toString(),
-                        );
-                        params.delete("open-popup-type");
-                        params.delete("open-popup-id");
-                        if (focusedId === selectedId)
-                          params.delete("active-event-id");
-                        router.replace(
-                          `${pathname}${params.size ? `?${params}` : ""}`,
-                          { scroll: false },
-                        );
+                        setFocusedId(null);
+                        closePopup();
                       }}
                     />
                   ) : null}

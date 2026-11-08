@@ -39,6 +39,10 @@ const PATHS = {
   globe:
     "M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9z",
   dots: "M5 12h.01M12 12h.01M19 12h.01",
+  swap: "M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4",
+  map: "M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
+  list: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",
+  search: "M11 4a7 7 0 1 0 0 14a7 7 0 0 0 0-14zM20 20l-4-4",
 };
 
 export type IconName = keyof typeof PATHS;

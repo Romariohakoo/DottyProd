@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 interface DialogProps {
   children: React.ReactNode;
   isDismissable?: boolean;
-  size?: "default" | "compact";
+  size?: "default" | "medium" | "compact";
   labelledBy: string;
   onClose: () => void;
 }
@@ -41,7 +41,7 @@ export function Dialog({
     <dialog
       ref={dialogRef}
       aria-labelledby={labelledBy}
-      className={`m3-dialog ${size === "compact" ? "m3-dialog--compact" : ""}`}
+      className={`m3-dialog ${size === "default" ? "" : `m3-dialog--${size}`}`}
       onCancel={(event) => {
         event.preventDefault();
         if (isDismissable) onClose();

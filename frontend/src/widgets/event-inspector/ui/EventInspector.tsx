@@ -57,14 +57,10 @@ export function EventInspector({
   if (!event) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-        <span className="m3-dot grid size-14 place-items-center rounded-full bg-primary-container text-primary">
+        <span className="grid size-14 place-items-center rounded-full bg-primary-container text-primary">
           <Icon name="pin" size={26} />
         </span>
         <p className="m3-title">Выберите событие</p>
-        <p className="m3-support">
-          Нажмите на событие в таймлайне — здесь появятся детали, фото и билеты,
-          а место подсветится на карте.
-        </p>
       </div>
     );
   }
@@ -126,7 +122,7 @@ export function EventInspector({
         <div className="flex flex-col gap-2">
           <span className="flex items-center gap-2 text-sm font-bold text-primary">
             {number ? (
-              <span className="m3-dot grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-on-primary">
+              <span className="grid size-5 place-items-center rounded-full bg-primary text-[10px] font-extrabold text-on-primary">
                 {number}
               </span>
             ) : null}
@@ -159,14 +155,24 @@ export function EventInspector({
                 />
                 {event.fromPlace.name} → {event.toPlace.name}
               </li>
-            ) : event.place ? (
-              <li className="flex items-center gap-2">
+            ) : event.place &&
+              (event.place.name !== event.title || event.place.address) ? (
+              <li className="flex items-start gap-2">
                 <Icon
                   name="pin"
                   size={16}
-                  className="text-on-surface-variant"
+                  className="mt-0.5 shrink-0 text-on-surface-variant"
                 />
-                {event.place.name}
+                <span className="min-w-0">
+                  {event.place.name !== event.title ? (
+                    <span className="block">{event.place.name}</span>
+                  ) : null}
+                  {event.place.address ? (
+                    <span className="block text-on-surface-variant">
+                      {event.place.address}
+                    </span>
+                  ) : null}
+                </span>
               </li>
             ) : null}
             {event.bookingUrl ? (
@@ -204,7 +210,7 @@ export function EventInspector({
             onClick={() => onEdit(event.id)}
           >
             <Icon name="edit" size={16} />
-            Изменить или удалить
+            Изменить
           </Button>
         </div>
       ) : null}

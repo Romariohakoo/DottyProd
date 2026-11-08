@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDateTime } from "@shared/lib";
+import { formatDateTime, tripCoverUrl } from "@shared/lib";
 
 import type { TripCard } from "../model";
 
@@ -34,14 +34,8 @@ export function TripList({ trips, featured = false, onSelect }: TripListProps) {
             className="m3-trip-card"
           >
             <span className="m3-trip-cover">
-              {trip.coverUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={trip.coverUrl} alt="" />
-              ) : (
-                <span className="m3-trip-cover-empty" aria-hidden="true">
-                  {trip.title.slice(0, 1)}
-                </span>
-              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={tripCoverUrl(trip.coverUrl, trip)} alt="" />
               <span className="m3-trip-badge">{tripBadge(trip, today)}</span>
             </span>
             <span className="m3-trip-title">{trip.title}</span>

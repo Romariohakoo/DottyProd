@@ -8,6 +8,7 @@ interface RangeCalendarProps {
   start: string;
   end: string;
   onChange: (start: string, end: string) => void;
+  allowPast?: boolean;
 }
 
 const MONTHS = [
@@ -84,7 +85,7 @@ function Month({
               aria-pressed={isEdge}
               aria-label={`${index + 1} ${MONTHS[month].toLowerCase()}`}
               onClick={() => onPick(value)}
-              className={`m3-dot absolute inset-0 m-auto grid size-11 place-items-center rounded-full ${
+              className={`absolute inset-0 m-auto grid size-11 place-items-center rounded-full ${
                 isEdge
                   ? "bg-primary font-extrabold text-on-primary"
                   : past
@@ -101,9 +102,16 @@ function Month({
   );
 }
 
-export function RangeCalendar({ start, end, onChange }: RangeCalendarProps) {
+export function RangeCalendar({
+  start,
+  end,
+  onChange,
+  allowPast = false,
+}: RangeCalendarProps) {
   const now = new Date();
-  const today = key(now.getFullYear(), now.getMonth(), now.getDate());
+  const today = allowPast
+    ? ""
+    : key(now.getFullYear(), now.getMonth(), now.getDate());
   const [cursor, setCursor] = useState(() => {
     const base = start ? new Date(`${start}T12:00:00`) : now;
     return { year: base.getFullYear(), month: base.getMonth() };

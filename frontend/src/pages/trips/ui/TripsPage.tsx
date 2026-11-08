@@ -103,13 +103,30 @@ export function TripsPage() {
   return (
     <main id="main-content">
       <section className="m3-hero-band" aria-labelledby="search-heading">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-8 sm:px-6 lg:px-10">
-          <h1 id="search-heading" className="m3-headline">
-            Куда отправимся дальше?
+        <div className="m3-decor" aria-hidden="true">
+          <span className="m3-decor-label top-5 left-[9.5rem] hidden sm:block">
+            55.79° N · 49.12° E
+          </span>
+          <span className="m3-decor-label top-5 right-[9.5rem] hidden sm:block">
+            {"{ маршруты · даты · места }"}
+          </span>
+        </div>
+        <div className="mx-auto flex w-full max-w-7xl flex-col items-start gap-5 px-4 pt-8 pb-10 sm:px-6 sm:pt-14 lg:px-10">
+          <span className="m3-pill-badge">
+            <Icon name="sparkle" size={14} />
+            {upcoming.length
+              ? `Впереди ${upcoming.length} ${upcoming.length === 1 ? "поездка" : upcoming.length < 5 ? "поездки" : "поездок"}`
+              : "Новый маршрут"}
+          </span>
+          <h1 id="search-heading" className="m3-display max-w-3xl">
+            Куда отправимся <span className="m3-accent">дальше?</span>
           </h1>
+          <p className="max-w-xl text-lg font-medium text-on-surface-variant">
+            Даты, места и билеты — в одном плане по дням.
+          </p>
           <form
             ref={searchRef}
-            className="relative"
+            className="relative mt-2 w-full"
             onSubmit={(event) => {
               event.preventDefault();
               openCreate();
@@ -150,6 +167,7 @@ export function TripsPage() {
                 />
               </label>
               <button type="submit" className="m3-search-submit">
+                <Icon name="plus" size={18} />
                 Создать поездку
               </button>
             </div>
@@ -168,12 +186,12 @@ export function TripsPage() {
                   <button
                     type="button"
                     onClick={() => setRange({ start: "", end: "" })}
-                    className="text-sm font-bold underline"
+                    className="m3-button m3-button--text min-h-10 px-3 py-1 text-sm"
                   >
                     Сбросить
                   </button>
                   <span className="text-sm font-bold text-primary">
-                    {nights ? `${nights} дн.` : "Выберите начало и конец"}
+                    {nights ? `${nights} дн.` : ""}
                   </span>
                   <button
                     type="button"
@@ -192,14 +210,31 @@ export function TripsPage() {
 
       <div className="m3-page">
         {trips.isPending ? (
-          <StatusMessage loading>Загружаем поездки…</StatusMessage>
+          <div
+            role="status"
+            aria-label="Загружаем поездки"
+            className="m3-trip-grid"
+          >
+            {[0, 1, 2, 3].map((item) => (
+              <div
+                key={item}
+                className="flex flex-col gap-3 rounded-large bg-surface-bright p-2 pb-4 shadow-1"
+              >
+                <div className="m3-skeleton aspect-[4/3]" />
+                <div className="m3-skeleton mx-2 h-4 w-2/3" />
+                <div className="m3-skeleton mx-2 h-3 w-1/2" />
+              </div>
+            ))}
+          </div>
         ) : trips.isError ? (
           <FormError>
             Не удалось загрузить поездки. Попробуйте обновить страницу.
           </FormError>
         ) : trips.data.length === 0 ? (
           <section className="m3-empty">
-            <Icon name="plane" size={28} className="text-primary" />
+            <span data-tone="lavender" className="m3-tone-tile mb-2 size-14">
+              <Icon name="plane" size={26} />
+            </span>
             <h2 className="m3-title">Поездок пока нет</h2>
             <p className="m3-support">
               Укажите, куда и когда едете, — остальное добавите потом.
@@ -209,7 +244,10 @@ export function TripsPage() {
           <>
             {upcoming.length ? (
               <section className="flex flex-col gap-5">
-                <h2 className="m3-title">Предстоящие поездки</h2>
+                <h2 className="m3-title flex items-baseline gap-2">
+                  Предстоящие поездки
+                  <span className="m3-meta">{upcoming.length}</span>
+                </h2>
                 <TripList
                   trips={upcoming}
                   featured
@@ -219,7 +257,10 @@ export function TripsPage() {
             ) : null}
             {past.length ? (
               <section className="flex flex-col gap-5">
-                <h2 className="m3-title">Воспоминания</h2>
+                <h2 className="m3-title flex items-baseline gap-2">
+                  Воспоминания
+                  <span className="m3-meta">{past.length}</span>
+                </h2>
                 <TripList
                   trips={past}
                   onSelect={(id) => router.push(`/trips/${id}`)}
