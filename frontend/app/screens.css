@@ -810,10 +810,13 @@
     corner-shape: round;
   }
   .m3-avatar-edit img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     border-radius: inherit;
     object-fit: cover;
+    corner-shape: round;
   }
   .m3-avatar-badge {
     position: absolute;
@@ -839,5 +842,103 @@
   .m3-plan:not([data-map="open"]) .m3-map-tools,
   .m3-plan:not([data-map="open"]) .m3-map-layers {
     display: none;
+  }
+}
+
+@layer components {
+  .m3-spinner {
+    display: inline-block;
+    width: 1.375rem;
+    height: 1.375rem;
+    flex-shrink: 0;
+    border: 2.5px solid color-mix(in srgb, var(--primary) 22%, transparent);
+    border-top-color: var(--primary);
+    border-radius: 9999px;
+    corner-shape: round;
+    animation: m3-spin 700ms linear infinite;
+  }
+  .m3-spinner--sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 2px;
+  }
+  .m3-cover-upload[aria-busy="true"] {
+    border-style: solid;
+    border-color: var(--primary);
+    background: var(--primary-soft);
+  }
+}
+
+@keyframes m3-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer components {
+  .m3-thinking {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 800;
+    color: var(--primary);
+  }
+  .m3-thinking > :first-child {
+    animation: m3-twinkle 1.4s ease-in-out infinite;
+  }
+  .m3-thinking > span {
+    background: linear-gradient(
+      90deg,
+      var(--on-surface) 0%,
+      var(--on-surface) 35%,
+      var(--primary) 50%,
+      var(--on-surface) 65%,
+      var(--on-surface) 100%
+    );
+    background-size: 220% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation:
+      m3-thinking-in 360ms var(--ease-spatial) both,
+      m3-shimmer 1.6s linear infinite;
+  }
+}
+
+@keyframes m3-thinking-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+    filter: blur(3px);
+  }
+}
+
+@keyframes m3-shimmer {
+  from {
+    background-position: 110% 0;
+  }
+  to {
+    background-position: -110% 0;
+  }
+}
+
+@keyframes m3-twinkle {
+  50% {
+    transform: scale(0.8) rotate(20deg);
+    opacity: 0.6;
+  }
+}
+
+@layer components {
+  .m3-ticket {
+    overflow: visible;
+  }
+  .m3-ticket-stub {
+    border-radius: 0 0 var(--shape-large) var(--shape-large);
+  }
+  @media (min-width: 640px) {
+    .m3-ticket-stub {
+      border-radius: 0 var(--shape-large) var(--shape-large) 0;
+    }
   }
 }

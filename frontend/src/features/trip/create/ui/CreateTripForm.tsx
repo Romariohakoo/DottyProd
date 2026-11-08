@@ -223,7 +223,7 @@ export function CreateTripForm({
               }}
             />
             {uploading ? (
-              <span className="m3-loading scale-75" />
+              <span className="m3-spinner" aria-label="Загружаем" />
             ) : (
               <Icon name="upload" size={20} />
             )}

@@ -112,6 +112,35 @@ function matchStop(places: PlaceDto[], code?: string): StopValue | null {
   return hub ? { kind: "new", place: hubToPlace(hub) } : null;
 }
 
+const THINKING = [
+  "Смотрю на фото",
+  "Ищу штрихкод",
+  "Считываю текст",
+  "Распознаю маршрут",
+  "Нахожу рейс и место",
+  "Сверяю даты",
+  "Почти готово",
+];
+
+function ThinkingStatus() {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(
+      () => setIndex((value) => Math.min(value + 1, THINKING.length - 1)),
+      1400,
+    );
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <p role="status" aria-live="polite" className="m3-thinking">
+      <Icon name="sparkle" size={18} />
+      <span key={index}>{THINKING[index]}…</span>
+    </p>
+  );
+}
+
 export function CreateFromTicketForm({
   tripId,
   trip,
@@ -287,6 +316,7 @@ export function CreateFromTicketForm({
       className={`flex w-full min-w-0 flex-wrap rounded-medium ${mark(key)}`}
     >
       <PlaceCombobox
+        floating
         alignEnd={key === "to"}
         places={places}
         value={key === "from" ? from : to}
@@ -398,10 +428,7 @@ export function CreateFromTicketForm({
             ) : null}
             <span className="m3-scan-line" aria-hidden="true" />
           </div>
-          <p role="status" className="flex items-center gap-2 font-bold">
-            <Icon name="sparkle" size={18} className="text-primary" />
-            Читаем билет…
-          </p>
+          <ThinkingStatus />
         </div>
       ) : null}
 

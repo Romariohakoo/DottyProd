@@ -107,7 +107,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
             )}
             <span className="m3-avatar-badge">
               {avatar.isPending ? (
-                <span className="m3-loading scale-50" />
+                <span className="m3-spinner m3-spinner--sm" />
               ) : (
                 <Icon name="camera" size={14} />
               )}

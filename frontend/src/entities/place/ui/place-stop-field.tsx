@@ -124,6 +124,7 @@ interface PlaceComboboxProps {
   autoFocus?: boolean;
   large?: boolean;
   alignEnd?: boolean;
+  floating?: boolean;
 }
 
 const matches = (text: string, query: string) =>
@@ -153,6 +154,7 @@ export function PlaceCombobox({
   autoFocus,
   large = false,
   alignEnd = false,
+  floating = false,
 }: PlaceComboboxProps) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -330,7 +332,7 @@ export function PlaceCombobox({
   const shown = value && !open ? stopName(value, places) : query;
 
   return (
-    <div className="contents">
+    <div className={floating ? "relative w-full min-w-0" : "contents"}>
       <div
         className={`flex min-w-0 flex-1 items-center gap-2 rounded-medium px-2 ${
           large
@@ -386,7 +388,7 @@ export function PlaceCombobox({
           className={`min-w-0 flex-1 truncate bg-transparent font-extrabold outline-none ${alignEnd ? "text-right" : ""} placeholder:font-bold placeholder:text-on-surface-variant ${large ? "" : "text-lg"}`}
         />
         {busy || suggest.isPending ? (
-          <span className="m3-loading scale-75" aria-label="Ищем" />
+          <span className="m3-spinner m3-spinner--sm" aria-label="Ищем" />
         ) : value?.kind === "new" && !open ? (
           <span className="shrink-0 rounded-full bg-primary-container px-2 py-0.5 text-[11px] font-bold text-primary">
             новое
@@ -398,7 +400,11 @@ export function PlaceCombobox({
         <ul
           id={listId}
           role="listbox"
-          className="m3-thin-scroll order-last mt-1 mb-2 flex max-h-72 basis-full flex-col gap-0.5 overflow-y-auto rounded-large bg-surface-bright p-1.5 shadow-[0_8px_24px_#0000001f,0_0_0_1px_var(--outline-variant)]"
+          className={`m3-thin-scroll flex max-h-72 flex-col gap-0.5 overflow-y-auto rounded-large bg-surface-bright p-1.5 shadow-[0_8px_24px_#0000001f,0_0_0_1px_var(--outline-variant)] ${
+            floating
+              ? `absolute top-full z-50 mt-1.5 w-72 max-w-[80vw] ${alignEnd ? "right-0" : "left-0"}`
+              : "order-last mt-1 mb-2 basis-full"
+          }`}
         >
           {options.map((option, index) => (
             <li

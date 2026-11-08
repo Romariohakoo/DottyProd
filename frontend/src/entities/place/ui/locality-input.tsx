@@ -103,7 +103,7 @@ export function LocalityInput({
           />
         </span>
         {search.isFetching ? (
-          <span className="m3-loading scale-75" aria-label="Ищем" />
+          <span className="m3-spinner m3-spinner--sm" aria-label="Ищем" />
         ) : null}
       </label>
       {options.length ? (
